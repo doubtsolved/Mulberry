@@ -1,0 +1,6 @@
+{
+  "name": "Mulberry",
+  "description": "Ergonomic study organizer and native PDF reader with 4 themes, agenda checklist, and inking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

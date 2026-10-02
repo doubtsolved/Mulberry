@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="0"
+        android:translateY="0">
+        <!-- Open book back shadow -->
+        <path
+            android:fillColor="#22000000"
+            android:pathData="M27,42 C36,39 47,40 54,43 C61,40 72,39 81,42 C83,43 84,45 84,47 L84,76 C84,78 82,80 80,79 C72,77 62,77 54,80 C46,77 36,77 28,79 C26,80 24,78 24,76 L24,47 C24,45 25,43 27,42 Z" />
+        <!-- Open Book Main Pages -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M27,39 C36,36 47,37 54,40 C61,37 72,36 81,39 C83,40 84,42 84,44 L84,72 C84,74 82,76 80,75 C72,73 62,73 54,76 C46,73 36,73 28,75 C26,76 24,74 24,72 L24,44 C24,42 25,40 27,39 Z" />
+        <!-- Center Book Spine Crease -->
+        <path
+            android:strokeColor="#BAE6FD"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M54,41 L54,75" />
+        <!-- Left Page lines (embossed text suggestion) -->
+        <path
+            android:strokeColor="#E0F2FE"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:pathData="M31,48 L48,46 M31,54 L48,52 M31,60 L44,58" />
+        <!-- Right Page lines -->
+        <path
+            android:strokeColor="#E0F2FE"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:pathData="M60,46 L77,48 M60,52 L77,54 M60,58 L73,60" />
+        <!-- Bookmark ribbon in Mulberry Accent Gold/Amber -->
+        <path
+            android:fillColor="#F59E0B"
+            android:pathData="M51,40 L57,40 L57,60 L54,57 L51,60 Z" />
+        <!-- Mulberry Leaf / Seedling Accent atop book -->
+        <path
+            android:fillColor="#38BDF8"
+            android:pathData="M54,34 C51,28 56,23 62,25 C62,31 57,34 54,34 Z" />
+        <path
+            android:fillColor="#0284C7"
+            android:pathData="M54,34 C56,29 52,24 47,26 C47,31 51,34 54,34 Z" />
+    </group>
+</vector>
