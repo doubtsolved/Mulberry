@@ -1404,6 +1404,74 @@ object FluentIcons {
             lineTo(19f, 20f)
         }
     }.build()
+
+    // Snips Tab: Scissors24Regular
+    val Scissors24Regular: ImageVector = ImageVector.Builder(
+        name = "Scissors24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(6f, 19f)
+            curveTo(4.34f, 19f, 3f, 17.66f, 3f, 16f)
+            curveTo(3f, 14.34f, 4.34f, 13f, 6f, 13f)
+            curveTo(7.3f, 13f, 8.4f, 13.82f, 8.82f, 15f)
+            lineTo(12f, 12f)
+            lineTo(20f, 4f)
+
+            moveTo(18f, 19f)
+            curveTo(16.34f, 19f, 15f, 17.66f, 15f, 16f)
+            curveTo(15f, 14.34f, 16.34f, 13f, 18f, 13f)
+            curveTo(19.66f, 13f, 21f, 14.34f, 21f, 16f)
+            curveTo(21f, 17.66f, 19.66f, 19f, 18f, 19f)
+            close()
+
+            moveTo(15.18f, 15f)
+            lineTo(12f, 12f)
+            lineTo(4f, 4f)
+        }
+    }.build()
+
+    // Snips Tab: Scissors24Filled
+    val Scissors24Filled: ImageVector = ImageVector.Builder(
+        name = "Scissors24Filled",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.25f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(6f, 19f)
+            curveTo(4.34f, 19f, 3f, 17.66f, 3f, 16f)
+            curveTo(3f, 14.34f, 4.34f, 13f, 6f, 13f)
+            curveTo(7.3f, 13f, 8.4f, 13.82f, 8.82f, 15f)
+            lineTo(12f, 12f)
+            lineTo(20f, 4f)
+
+            moveTo(18f, 19f)
+            curveTo(16.34f, 19f, 15f, 17.66f, 15f, 16f)
+            curveTo(15f, 14.34f, 16.34f, 13f, 18f, 13f)
+            curveTo(19.66f, 13f, 21f, 14.34f, 21f, 16f)
+            curveTo(21f, 17.66f, 19.66f, 19f, 18f, 19f)
+            close()
+
+            moveTo(15.18f, 15f)
+            lineTo(12f, 12f)
+            lineTo(4f, 4f)
+        }
+    }.build()
 }
 
 

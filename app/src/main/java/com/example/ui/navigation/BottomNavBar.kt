@@ -49,6 +49,12 @@ enum class MulberryTab(
         regularIcon = FluentIcons.Book24Regular,
         filledIcon = FluentIcons.Book24Filled
     ),
+    SNIPS(
+        title = "Snips",
+        testTag = "nav_tab_snips",
+        regularIcon = FluentIcons.Scissors24Regular,
+        filledIcon = FluentIcons.Scissors24Filled
+    ),
     STUDY(
         title = "Study",
         testTag = "nav_tab_study",
@@ -86,13 +92,13 @@ fun MulberryBottomNavBar(
             }
             .background(colors.surface.copy(alpha = if (colors.isDark) 0.92f else 0.96f))
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
             MulberryTab.entries.forEach { tab ->
@@ -121,20 +127,21 @@ fun MulberryBottomNavBar(
 
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .testTag(tab.testTag)
                         .clip(RoundedCornerShape(18.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onTabSelected(tab) }
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // Pill Indicator: 36.dp height, 64.dp width, 18.dp radius
+                    // Pill Indicator: 34.dp height, 56.dp width, 18.dp radius
                     Box(
                         modifier = Modifier
-                            .width(64.dp)
+                            .width(56.dp)
                             .height(34.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .background(pillBgColor),

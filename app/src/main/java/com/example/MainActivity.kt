@@ -40,6 +40,7 @@ import com.example.ui.screens.AgendaScreen
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.SnipsScreen
 import com.example.ui.theme.MulberryTheme
 import com.example.viewmodel.MulberryViewModel
 import com.example.BuildConfig
@@ -191,6 +192,9 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                     when (tab) {
                         MulberryTab.LIBRARY -> LibraryScreen(
                             viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        MulberryTab.SNIPS -> SnipsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                         MulberryTab.STUDY -> AgendaScreen(
