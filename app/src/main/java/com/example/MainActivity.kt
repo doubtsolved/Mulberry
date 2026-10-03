@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.example.ui.navigation.MulberryBottomNavBar
 import com.example.ui.navigation.MulberryTab
 import com.example.ui.screens.AgendaScreen
@@ -41,6 +42,7 @@ import com.example.ui.reader.ReaderActivity
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SnipsScreen
+import com.example.ui.screens.desk.DeskNavigationHost
 import com.example.ui.theme.MulberryTheme
 import com.example.viewmodel.MulberryViewModel
 import com.example.BuildConfig
@@ -165,11 +167,14 @@ fun MulberryApp(viewModel: MulberryViewModel) {
         }
     }
 
+    var isNoteEditorActive by remember { mutableStateOf(false) }
+    val showBottomBar = !isReaderOpen && !isNoteEditorActive
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
-                if (!isReaderOpen) {
+                if (showBottomBar) {
                     MulberryBottomNavBar(
                         selectedTab = currentTab,
                         onTabSelected = { viewModel.setTab(it) }
@@ -180,7 +185,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = if (!isReaderOpen) innerPadding.calculateBottomPadding() else innerPadding.calculateTopPadding())
+                    .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
             ) {
                 AnimatedContent(
                     targetState = currentTab,
@@ -197,8 +202,28 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         MulberryTab.SNIPS -> SnipsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
-                        MulberryTab.STUDY -> AgendaScreen(
+                        MulberryTab.DESK -> DeskNavigationHost(
                             viewModel = viewModel,
+                            onEditorActiveChanged = { isActive ->
+                                isNoteEditorActive = isActive
+                            },
+                            onOpenBookAtPage = { bookName, page ->
+                                val booksList = viewModel.allBooks.value
+                                val found = booksList.find { 
+                                    it.title.contains(bookName, ignoreCase = true) ||
+                                    it.fileName.contains(bookName, ignoreCase = true) ||
+                                    bookName.contains(it.fileName.removeSuffix(".pdf"), ignoreCase = true)
+                                } ?: booksList.firstOrNull()
+
+                                if (found != null) {
+                                    ReaderActivity.launch(
+                                        context = context,
+                                        bookPath = found.uriString,
+                                        bookTitle = found.title,
+                                        bookId = found.id
+                                    )
+                                }
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                         MulberryTab.SETTINGS -> SettingsScreen(

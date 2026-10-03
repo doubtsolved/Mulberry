@@ -55,11 +55,11 @@ enum class MulberryTab(
         regularIcon = FluentIcons.Scissors24Regular,
         filledIcon = FluentIcons.Scissors24Filled
     ),
-    STUDY(
-        title = "Study",
-        testTag = "nav_tab_study",
-        regularIcon = FluentIcons.TaskListSquareLtr24Regular,
-        filledIcon = FluentIcons.TaskListSquareLtr24Filled
+    DESK(
+        title = "Desk",
+        testTag = "nav_tab_desk",
+        regularIcon = FluentIcons.Notebook24Regular,
+        filledIcon = FluentIcons.Notebook24Filled
     ),
     SETTINGS(
         title = "Settings",

@@ -1,79 +1,76 @@
-# Implementation Plan — Minimalist Study Page Revamp Placeholder & Snips Tab
+# Implementation Plan — Obsidian-Style In-Place Live Markdown Editor, Dock Alignment & Active Vault Linkage
 
-Update the Study page to an animated thinking state, introduce a new "Snips" tab positioned second in the navigation bar, remove all accent pills, badges, or tags, and keep both placeholder screens minimal, focused, and beautifully animated.
-
----
-
-## User Preferences & Revisions
-- **No Accent Pills / Badges**: Do not display any accent pills, status tags, or chip badges on either screen. Keep the design sleek and distraction-free.
-- **No Subtitle on Snips Tab**: Omit the long descriptive subtitle.
-- **Copy on Study Page**:
-  - **Headline**: *"Hold Tight, Ajit is Thinking..."*
-  - **Supporting Line**: *"Synapses are firing and notes are brewing. A smarter way to master your coursework is dropping soon."*
-- **Copy on Snips Tab**:
-  - **Headline**: *"Something's Cooking. Don't Enter the Kitchen!"*
-  - **Supporting Line**: *"Master chefs at work. Simmering the finest visual scrapbook to perfection."*
-- **Tab Bar Ordering**: `Library` $\rightarrow$ `Snips` $\rightarrow$ `Study` $\rightarrow$ `Settings`.
+Refine the **Desk** tab experience to deliver a true Obsidian-like live editing environment, a polished formatting accessory dock, distraction-free full-screen note editing, and strict active-vault directory binding.
 
 ---
 
-## Proposed Changes
+## 🎯 Key Improvements
 
-### Navigation & Tab Bar
+### 1. Distraction-Free Workspace & Hidden Bottom Navigation
+- When a note is opened in `NoteEditorScreen`, **hide the bottom navigation bar completely** (`isNoteEditorOpen` state in `MainActivity` / `DeskNavigationHost`).
+- When exiting back to `FolderDetailScreen` or `DeskRootScreen`, the bottom navigation bar smoothly reappears.
 
-#### [BottomNavBar.kt](file:///app/src/main/java/com/example/ui/navigation/BottomNavBar.kt)
-- Update `MulberryTab` enum:
-  1. `LIBRARY` ("Library", Book icon)
-  2. `SNIPS` ("Snips", Scissors / Scrapbook icon)
-  3. `STUDY` ("Study", Lightbulb / TaskList icon)
-  4. `SETTINGS` ("Settings", Gear icon)
-- Ensure all 4 tabs maintain 48dp touch targets, smooth pill animation, and active theme colors.
+### 2. Dock Alignment & Cursor Auto-Centering
+- **Dock Redesign**: Rebuild the accessory bar as a unified, beautifully styled floating/docked toolbar matching the active Mulberry palette (no mismatched backgrounds or clipped icon boxes).
+- **Cursor Placement**:
+  - **Bold (`**`): If text is selected $\rightarrow$ wrap `**selected**`. If no text is selected $\rightarrow$ insert `****` and place cursor right in the middle: `**|**`.
+  - **Italic (`*`): If no text is selected $\rightarrow$ insert `**` and place cursor in the middle: `*|*`.
+  - **Code/Inline (` ` `): Insert ```` `` ```` with cursor inside.
+  - **Book Citation / Snip / Task / Quote**: Insert at cursor or line start and focus correctly.
 
-#### [FluentIcons.kt](file:///app/src/main/java/com/example/ui/components/FluentIcons.kt)
-- Add vector icons for `Snips24Regular` and `Snips24Filled` (scissors / visual cut motif).
+### 3. Obsidian-Style Live In-Place Markdown Rendering
+- **In-Place Styling (`MarkdownVisualTransformation` / Real-Time Annotated Transformation)**:
+  - While typing in the editor, lines starting with `# ` dynamically render as **H1** (larger font size, bold, heading line-height) directly in place.
+  - `## ` renders dynamically as **H2** (19sp bold).
+  - `### ` renders dynamically as **H3** (16sp bold).
+  - `**bold**` renders with **bold** font weight in place.
+  - `*italic*` renders with *italic* font style in place.
+  - `- [ ]` and `- [x]` render as distinct checklist items in place.
+  - `[[Book#p.123]]` renders with citation highlight styling in place.
+  - The underlying file remains clean UTF-8 Markdown text and saves simultaneously to disk on every keystroke with debounced background coroutines.
 
----
-
-### Screens & UI Components
-
-#### [AgendaScreen.kt](file:///app/src/main/java/com/example/ui/screens/AgendaScreen.kt)
-- Clear existing checklist/exam UI cards while retaining underlying database models and DAOs for future use.
-- Implement animated Canvas & Compose graphical thinking scene:
-  - **Pulsing Lightbulb Graphic**: Gentle breathing scale oscillation with an illuminated warm radial glow.
-  - **Ascending Thought Bubbles**: Particle bubbles drifting upward with smooth sinusoidal drift.
-  - **Clean Typography (No Accent Pills)**:
-    - Title: *"Hold Tight, Ajit is Thinking..."* (Bold, 22sp, `colors.textPrimary`)
-    - Subtext: *"Synapses are firing and notes are brewing. A smarter way to master your coursework is dropping soon."* (14sp, `colors.textMuted`, centered)
-
-#### [SnipsScreen.kt](file:///app/src/main/java/com/example/ui/screens/SnipsScreen.kt)
-- Create a dedicated Composable `SnipsScreen`:
-  - **Top Bar**: Minimal title header *"Snips"*.
-  - **Playful Cooking Graphic**:
-    - Floating and slightly bobbing chef hat with subtle tilt animation.
-    - Ascending culinary steam curves and rotating sparkle stars.
-  - **Clean Copy (Zero Subtitles, Zero Accent Pills)**:
-    - Primary Header: *"Something's Cooking. Don't Enter the Kitchen!"*
-    - Supporting Subtext: *"Master chefs at work. Simmering the finest visual scrapbook to perfection."*
-
-#### [MainActivity.kt](file:///app/src/main/java/com/example/MainActivity.kt)
-- Route `MulberryTab.SNIPS` to `SnipsScreen` in `AnimatedContent`.
-- Update back-press behavior so pressing back on `SNIPS` returns smoothly to `LIBRARY`.
+### 4. Active Vault Dynamic Binding
+- Instead of hardcoding a separate `MedicalVault`, `DeskRepository` binds directly to `viewModel.activeVault` (`activeVault.rootPath`).
+- **Conditional Starter Seeding**:
+  - When an active vault is opened, check its `.mulberry/notes/` directory.
+  - **Only if** that vault has no notes/folders, seed the initial sample starter notes into that specific vault's `.mulberry/notes/`.
+  - If that vault already contains notes, display the user's existing files without overwriting.
+  - Allow switching vaults directly from the top chip dropdown.
 
 ---
 
-## Verification Plan
+## 🛠️ Step-by-Step Implementation
 
-### Automated Verification
-- Run `compile_applet` to confirm clean compilation with no syntax or type errors.
+### Step 1: Update `DeskRepository.kt`
+- Accept dynamic active vault path from `viewModel.activeVault`.
+- Seed starter notes strictly inside `${activeVault.rootPath}/.mulberry/notes/` when empty.
+- Provide vault switching support.
 
-### Manual Verification
-1. **Tab Structure**: Verify 4 tabs in bottom navigation: `Library`, `Snips`, `Study`, `Settings`.
-2. **Snips Screen**:
-   - Verify chef hat floating/steam animation.
-   - Verify copy: *"Something's Cooking. Don't Enter the Kitchen!"*.
-   - Confirm **zero accent pills**, chips, or subtitles appear.
-3. **Study Screen**:
-   - Verify lightbulb pulse and drifting thought bubbles animation.
-   - Verify copy: *"Hold Tight, Ajit is Thinking..."*.
-   - Confirm **zero accent pills** or chips appear.
-4. **Theme Adaptation**: Verify seamless rendering across all 6 themes (Olded Sepia, Paper, Midnight OLED, Forest, Espresso, Dusk).
+### Step 2: In-Place Markdown Live Renderer (`MarkdownVisualTransformation.kt`)
+- Implement a custom `VisualTransformation` for `BasicTextField` that applies live `SpanStyle`s:
+  - `# ` headings: scaled font sizes (24sp for H1, 19sp for H2, 16sp for H3) with dimmed `#` prefix.
+  - `**text**`: `FontWeight.Bold` with dimmed `**` delimiters.
+  - `*text*`: `FontStyle.Italic` with dimmed `*` delimiters.
+  - `[[Book#p.123]]`: Primary tinted citation pill style.
+  - `- [ ]`: Accent colored task checkbox marker.
+- Maintains 1:1 character index mapping so cursor movement and selection work flawlessly.
+
+### Step 3: Redesign Accessory Tool Dock in `NoteEditorScreen.kt`
+- Unify tool buttons with consistent 38dp height, rounded 10dp squircle shapes, and cohesive theme tinting.
+- Implement cursor auto-centering:
+  - Bold: `text.substring(0, start) + "**" + selected + "**" + text.substring(end)` $\rightarrow$ cursor at `start + 2`.
+  - Italic: `start + 1`.
+  - Strikethrough / Code: auto-centered cursor.
+- Dock rests above the IME keyboard with `imePadding()` and at the screen bottom when keyboard is dismissed.
+
+### Step 4: Hide Bottom Navigation Bar in `MainActivity.kt` & `DeskNavigationHost.kt`
+- Lift `isNoteEditorOpen` state to hide `MulberryBottomNavBar` when inside `NoteEditorScreen`.
+
+---
+
+## 🧪 Verification Plan
+1. **Tool Dock Alignment**: Verify toolbar appears directly above the virtual keyboard without clipping or awkward gaps.
+2. **Bottom Nav Bar**: Verify tabs disappear when opening a note and reappear upon exiting.
+3. **Cursor Auto-Centering**: Tap Bold `[B]` with no selection $\rightarrow$ verify text becomes `**|**` with cursor placed inside.
+4. **Obsidian In-Place Rendering**: Type `# My Title` $\rightarrow$ verify it immediately scales to large bold H1 in the active editing canvas.
+5. **Active Vault Seeding**: Verify notes are stored in `${activeVault.rootPath}/.mulberry/notes/` and samples only seed if that vault is empty.
