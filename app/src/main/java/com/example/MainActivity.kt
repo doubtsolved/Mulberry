@@ -42,10 +42,13 @@ import com.example.ui.reader.ReaderActivity
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SnipsScreen
-import com.example.ui.screens.desk.DeskNavigationHost
+import com.example.ui.screens.PermissionGatewayScreen
+import com.example.ui.screens.desk.DeskRootScreen
 import com.example.ui.theme.MulberryTheme
+import com.example.util.PermissionUtils
 import com.example.viewmodel.MulberryViewModel
 import com.example.BuildConfig
+import com.example.ui.components.CustomizeTabsSheet
 import com.example.ui.components.UpdateBottomSheet
 import com.example.util.DownloadState
 import com.example.util.ReleaseInfo
@@ -53,6 +56,8 @@ import com.example.util.UpdateCheckResult
 import com.example.util.UpdateManager
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -82,14 +87,37 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Check & request MANAGE_EXTERNAL_STORAGE for raw File access
-        checkAndRequestAllFilesAccess()
-
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
+            val context = LocalContext.current
+
+            var permissionsGranted by remember {
+                mutableStateOf(PermissionUtils.areAllRequiredPermissionsGranted(context))
+            }
+
+            // Continuously listen to resume events so if user grants permissions outside the app, UI updates immediately
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                permissionsGranted = PermissionUtils.areAllRequiredPermissionsGranted(context)
+            }
 
             MulberryTheme(themeMode = themeMode) {
-                MulberryApp(viewModel = viewModel)
+                AnimatedContent(
+                    targetState = permissionsGranted,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    },
+                    label = "PermissionGateTransition"
+                ) { granted ->
+                    if (granted) {
+                        MulberryApp(viewModel = viewModel)
+                    } else {
+                        PermissionGatewayScreen(
+                            onAllPermissionsGranted = {
+                                permissionsGranted = true
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -126,6 +154,8 @@ class MainActivity : ComponentActivity() {
 fun MulberryApp(viewModel: MulberryViewModel) {
     val context = LocalContext.current
     val currentTab by viewModel.currentTab.collectAsState()
+    val visibleTabs by viewModel.visibleTabs.collectAsState()
+    val showCustomizeTabsSheet by viewModel.showCustomizeTabsSheet.collectAsState()
     val isReaderOpen by viewModel.isReaderOpen.collectAsState()
     val currentBook by viewModel.currentReadingBook.collectAsState()
     val activeBreadcrumbs by viewModel.activeBreadcrumbs.collectAsState()
@@ -167,8 +197,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
         }
     }
 
-    var isNoteEditorActive by remember { mutableStateOf(false) }
-    val showBottomBar = !isReaderOpen && !isNoteEditorActive
+    val showBottomBar = !isReaderOpen
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -177,7 +206,9 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 if (showBottomBar) {
                     MulberryBottomNavBar(
                         selectedTab = currentTab,
-                        onTabSelected = { viewModel.setTab(it) }
+                        onTabSelected = { viewModel.setTab(it) },
+                        tabs = visibleTabs,
+                        onTabLongClick = { viewModel.openCustomizeTabsSheet() }
                     )
                 }
             }
@@ -202,28 +233,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         MulberryTab.SNIPS -> SnipsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
-                        MulberryTab.DESK -> DeskNavigationHost(
-                            viewModel = viewModel,
-                            onEditorActiveChanged = { isActive ->
-                                isNoteEditorActive = isActive
-                            },
-                            onOpenBookAtPage = { bookName, page ->
-                                val booksList = viewModel.allBooks.value
-                                val found = booksList.find { 
-                                    it.title.contains(bookName, ignoreCase = true) ||
-                                    it.fileName.contains(bookName, ignoreCase = true) ||
-                                    bookName.contains(it.fileName.removeSuffix(".pdf"), ignoreCase = true)
-                                } ?: booksList.firstOrNull()
-
-                                if (found != null) {
-                                    ReaderActivity.launch(
-                                        context = context,
-                                        bookPath = found.uriString,
-                                        bookTitle = found.title,
-                                        bookId = found.id
-                                    )
-                                }
-                            },
+                        MulberryTab.DESK -> DeskRootScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                         MulberryTab.SETTINGS -> SettingsScreen(
@@ -277,6 +287,14 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                     showLaunchUpdateSheet = false
                     launchDownloadState = DownloadState.Idle
                 }
+            )
+        }
+
+        // Tab Customization Modal
+        if (showCustomizeTabsSheet) {
+            CustomizeTabsSheet(
+                viewModel = viewModel,
+                onDismiss = { viewModel.closeCustomizeTabsSheet() }
             )
         }
     }

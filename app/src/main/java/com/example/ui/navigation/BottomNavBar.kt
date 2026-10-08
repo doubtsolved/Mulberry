@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,8 +62,8 @@ enum class MulberryTab(
     DESK(
         title = "Desk",
         testTag = "nav_tab_desk",
-        regularIcon = FluentIcons.Notebook24Regular,
-        filledIcon = FluentIcons.Notebook24Filled
+        regularIcon = FluentIcons.CalendarLtr24Regular,
+        filledIcon = FluentIcons.CalendarLtr24Filled
     ),
     SETTINGS(
         title = "Settings",
@@ -69,13 +73,28 @@ enum class MulberryTab(
     )
 }
 
+data class NavTabConfig(
+    val tab: MulberryTab,
+    val isVisible: Boolean = true
+)
+
+val DEFAULT_TAB_CONFIGS = listOf(
+    NavTabConfig(MulberryTab.LIBRARY, isVisible = true),
+    NavTabConfig(MulberryTab.SNIPS, isVisible = true),
+    NavTabConfig(MulberryTab.DESK, isVisible = true),
+    NavTabConfig(MulberryTab.SETTINGS, isVisible = true)
+)
+
 @Composable
 fun MulberryBottomNavBar(
     selectedTab: MulberryTab,
     onTabSelected: (MulberryTab) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tabs: List<MulberryTab> = MulberryTab.entries,
+    onTabLongClick: (MulberryTab) -> Unit = {}
 ) {
     val colors = LocalMulberryColors.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val borderHairline = colors.borderSubtle
 
     // Ultra-fine 0.5.dp top hairline border + translucent frosted backdrop
@@ -101,7 +120,7 @@ fun MulberryBottomNavBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            MulberryTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 val isSelected = tab == selectedTab
 
                 val animatedScale by animateFloatAsState(
@@ -130,10 +149,15 @@ fun MulberryBottomNavBar(
                         .weight(1f)
                         .testTag(tab.testTag)
                         .clip(RoundedCornerShape(18.dp))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onTabSelected(tab) }
+                        .pointerInput(tab) {
+                            detectTapGestures(
+                                onTap = { onTabSelected(tab) },
+                                onLongPress = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onTabLongClick(tab)
+                                }
+                            )
+                        }
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center

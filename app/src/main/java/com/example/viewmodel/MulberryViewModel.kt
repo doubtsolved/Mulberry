@@ -19,6 +19,8 @@ import com.example.data.repository.MulberryRepository
 import com.example.data.repository.UserProfileRepository
 import com.example.data.repository.VaultMetadataManager
 import com.example.ui.navigation.MulberryTab
+import com.example.ui.navigation.NavTabConfig
+import com.example.ui.navigation.DEFAULT_TAB_CONFIGS
 import com.example.ui.theme.ThemeMode
 import com.example.util.PdfAnnotationManager
 import com.example.util.ThumbnailManager
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,7 +125,64 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
         prefs.edit().putString("ICON_STYLE_KEY", style.name).apply()
     }
 
-    // Navigation Tab
+    // Navigation Tab & Customization
+    private fun loadTabConfigs(): List<NavTabConfig> {
+        val raw = prefs.getString("nav_tab_configs", null)
+        if (raw.isNullOrBlank()) return DEFAULT_TAB_CONFIGS
+        return try {
+            val loaded = raw.split(",").mapNotNull { part ->
+                val segments = part.split(":")
+                if (segments.size >= 2) {
+                    val tabName = segments[0]
+                    val isVis = segments[1].toBooleanStrictOrNull() ?: true
+                    val tab = MulberryTab.entries.firstOrNull { it.name.equals(tabName, ignoreCase = true) }
+                    if (tab != null) NavTabConfig(tab = tab, isVisible = if (tab == MulberryTab.LIBRARY) true else isVis) else null
+                } else null
+            }.toMutableList()
+
+            MulberryTab.entries.forEach { entry ->
+                if (loaded.none { it.tab == entry }) {
+                    loaded.add(NavTabConfig(entry, isVisible = true))
+                }
+            }
+            val sanitized = loaded.map { if (it.tab == MulberryTab.LIBRARY) it.copy(isVisible = true) else it }
+            if (sanitized.count { it.isVisible } < 2) {
+                DEFAULT_TAB_CONFIGS
+            } else {
+                sanitized
+            }
+        } catch (_: Exception) {
+            DEFAULT_TAB_CONFIGS
+        }
+    }
+
+    private fun saveTabConfigs(configs: List<NavTabConfig>) {
+        val str = configs.joinToString(",") { "${it.tab.name}:${it.isVisible}" }
+        prefs.edit().putString("nav_tab_configs", str).apply()
+    }
+
+    private val _tabConfigs = MutableStateFlow<List<NavTabConfig>>(loadTabConfigs())
+    val tabConfigs: StateFlow<List<NavTabConfig>> = _tabConfigs.asStateFlow()
+
+    val visibleTabs: StateFlow<List<MulberryTab>> = _tabConfigs.map { configs ->
+        configs.filter { it.isVisible }.map { it.tab }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        _tabConfigs.value.filter { it.isVisible }.map { it.tab }
+    )
+
+    private val _showCustomizeTabsSheet = MutableStateFlow(false)
+    val showCustomizeTabsSheet: StateFlow<Boolean> = _showCustomizeTabsSheet.asStateFlow()
+
+    fun openCustomizeTabsSheet() {
+        _showCustomizeTabsSheet.value = true
+    }
+
+    fun closeCustomizeTabsSheet() {
+        _showCustomizeTabsSheet.value = false
+    }
+
     private val _currentTab = MutableStateFlow(MulberryTab.LIBRARY)
     val currentTab: StateFlow<MulberryTab> = _currentTab.asStateFlow()
 
@@ -427,6 +487,58 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
 
     fun setTab(tab: MulberryTab) {
         _currentTab.value = tab
+    }
+
+    fun reorderTabs(fromIndex: Int, toIndex: Int) {
+        val current = _tabConfigs.value.toMutableList()
+        if (fromIndex in current.indices && toIndex in current.indices && fromIndex != toIndex) {
+            val item = current.removeAt(fromIndex)
+            current.add(toIndex, item)
+            _tabConfigs.value = current
+            saveTabConfigs(current)
+        }
+    }
+
+    fun toggleTabVisibility(tab: MulberryTab, isVisible: Boolean) {
+        if (tab == MulberryTab.LIBRARY && !isVisible) return
+        val current = _tabConfigs.value
+        val visibleCount = current.count { it.isVisible }
+        if (!isVisible && visibleCount <= 2 && current.find { it.tab == tab }?.isVisible == true) {
+            return
+        }
+        val updated = current.map { config ->
+            if (config.tab == tab) config.copy(isVisible = isVisible) else config
+        }
+        setTabConfigs(updated)
+    }
+
+    fun setTabConfigs(configs: List<NavTabConfig>) {
+        val sanitized = configs.map { config ->
+            if (config.tab == MulberryTab.LIBRARY) config.copy(isVisible = true) else config
+        }
+        val visibleCount = sanitized.count { it.isVisible }
+        val finalList = if (visibleCount < 2) {
+            sanitized.mapIndexed { index, cfg ->
+                if (cfg.tab == MulberryTab.LIBRARY || index == 0 || (visibleCount == 1 && index == 1)) {
+                    cfg.copy(isVisible = true)
+                } else cfg
+            }
+        } else {
+            sanitized
+        }
+        _tabConfigs.value = finalList
+        saveTabConfigs(finalList)
+
+        val curTab = _currentTab.value
+        val isCurTabVisible = finalList.any { it.tab == curTab && it.isVisible }
+        if (!isCurTabVisible) {
+            val fallback = finalList.firstOrNull { it.isVisible }?.tab ?: MulberryTab.LIBRARY
+            _currentTab.value = fallback
+        }
+    }
+
+    fun resetTabsToDefault() {
+        setTabConfigs(DEFAULT_TAB_CONFIGS)
     }
 
     fun setSearchQuery(query: String) {

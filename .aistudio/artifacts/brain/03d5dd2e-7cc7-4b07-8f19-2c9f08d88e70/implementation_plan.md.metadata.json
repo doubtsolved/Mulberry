@@ -1,6 +1,6 @@
 {
-  "summary":  "Comprehensive plan to: (1) hide bottom navigation tabs when a note is opened, (2) redesign and align the docked formatting toolbar with cursor auto-centering inside formatting tags like **|**, (3) implement live in-place Obsidian-style Markdown rendering via Compose VisualTransformation/AnnotatedString with simultaneous background disk saving, and (4) link Desk directly to the active vault so sample notes are only seeded into that specific vault when empty.",
-  "updatedAt":  "2026-10-03T09:01:05.417871890Z",
+  "summary":  "Comprehensive implementation plan for user-customizable navigation tabs in Mulberry. Includes drag-and-drop reordering with grip handles, tab visibility toggles, long-press gesture trigger on any bottom bar tab, Settings screen integration, and persistent preferences storage.",
+  "updatedAt":  "2026-10-08T16:17:50.610345205Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import com.example.data.dao.BookDao
 import com.example.data.dao.VaultDao
 import com.example.data.model.BookEntity
@@ -34,15 +36,16 @@ class BookRepository(
         val dbPathMap = dbBooks.associateBy { it.path }
 
         // Step 3: Compute changes
-        // 3a. New files to insert
+        // 3a. New files to insert with true PDF page count
         val newBooks = diskFiles.filterNot { dbPathMap.containsKey(it.absolutePath) }.map { file ->
+            val detectedPageCount = getPdfPageCount(file)
             BookEntity(
                 vaultId = if (vaultIdInt != -1) vaultIdInt else 1,
                 title = cleanBookTitle(file.nameWithoutExtension),
                 fileName = file.name,
                 uriString = file.absolutePath,
                 fileSizeBytes = file.length(),
-                pageCount = 1,
+                pageCount = detectedPageCount,
                 lastReadPage = 1,
                 progressPercent = 0,
                 lastReadTimestamp = 0L,
@@ -54,13 +57,14 @@ class BookRepository(
         // 3b. Missing files to remove from DB
         val deletedBookPaths = dbBooks.filterNot { diskPathMap.containsKey(it.path) }.map { it.path }
 
-        // 3c. Modified files (size or timestamp changed)
+        // 3c. Modified files (size, timestamp changed, or unparsed page count)
         val modifiedBooks = dbBooks.filter { book ->
             val diskFile = diskPathMap[book.path]
-            diskFile != null && diskFile.length() != book.fileSize
+            diskFile != null && (diskFile.length() != book.fileSize || book.pageCount <= 1)
         }.map { book ->
             val diskFile = diskPathMap[book.path]!!
-            book.copy(fileSizeBytes = diskFile.length())
+            val trueCount = if (book.pageCount <= 1) getPdfPageCount(diskFile) else book.pageCount
+            book.copy(fileSizeBytes = diskFile.length(), pageCount = trueCount)
         }
 
         // Step 4: Batch execute in Room
@@ -93,4 +97,10 @@ class BookRepository(
             }
         }
     }
+
+    private fun getPdfPageCount(file: File): Int = runCatching {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+            PdfRenderer(pfd).use { renderer -> renderer.pageCount }
+        }
+    }.getOrDefault(1)
 }

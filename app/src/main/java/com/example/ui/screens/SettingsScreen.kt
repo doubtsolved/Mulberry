@@ -47,6 +47,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -56,6 +58,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -133,6 +136,7 @@ fun SettingsScreen(
     val cacheSizeBytes by settingsViewModel.cacheSizeBytes.collectAsState()
     val databaseSizeBytes by settingsViewModel.databaseSizeBytes.collectAsState()
     val userProfile by settingsViewModel.userProfile.collectAsState()
+    val visibleTabs by viewModel.visibleTabs.collectAsState()
 
     var showProfileBottomSheet by remember { mutableStateOf(false) }
     var activeSheet by remember { mutableStateOf(ActiveSettingsSheet.NONE) }
@@ -276,14 +280,25 @@ fun SettingsScreen(
                             color = colors.primary.copy(alpha = 0.12f),
                             modifier = Modifier.padding(top = 4.dp)
                         ) {
-                            Text(
-                                text = "🎯 Target: ${userProfile.dailyPageGoal} pages/day",
-                                fontFamily = InterFamily,
-                                fontWeight = FontWeight.Normal,
-                                fontSize = 11.sp,
-                                color = colors.primary,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.Target24Regular,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Target: ${userProfile.dailyPageGoal} pages/day",
+                                    fontFamily = InterFamily,
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 11.sp,
+                                    color = colors.primary
+                                )
+                            }
                         }
                     }
 
@@ -337,6 +352,14 @@ fun SettingsScreen(
                     valueLabel = if (isPageFlipAnimationEnabled) "Animation On" else "Animation Off",
                     onClick = { activeSheet = ActiveSettingsSheet.READING_MODE }
                 )
+                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
+                SettingsItemRow(
+                    icon = FluentIcons.Navigation24Regular,
+                    title = "Navigation & Tabs",
+                    valueLabel = "${visibleTabs.size} Tabs Active",
+                    iconTint = getSemanticIconTint(SemanticColors.Folder, iconStyle),
+                    onClick = { viewModel.openCustomizeTabsSheet() }
+                )
             }
 
             // GROUP 3: DATA & STORAGE
@@ -387,7 +410,7 @@ fun SettingsScreen(
                                     showUpdateSheet = true
                                 }
                                 is UpdateCheckResult.UpToDate -> {
-                                    Toast.makeText(context, "✓ Mulberry is up to date (v${BuildConfig.VERSION_NAME})", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Mulberry is up to date (v${BuildConfig.VERSION_NAME})", Toast.LENGTH_SHORT).show()
                                 }
                                 is UpdateCheckResult.Error -> {
                                     Toast.makeText(context, "Update check failed: ${result.message}", Toast.LENGTH_LONG).show()
@@ -530,7 +553,17 @@ fun SettingsScreen(
                         )
                     }
                     ActiveSettingsSheet.ABOUT -> {
-                        AboutSheetContent()
+                        AboutSheetContent(
+                            onSendFeedback = { sendDiagnosticFeedback(context, currentTheme.title) },
+                            onOpenGitHub = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/doubtsolved/Mulberry"))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
                     }
                     ActiveSettingsSheet.NONE -> {}
                 }
@@ -953,8 +986,14 @@ private fun VaultsSheetContent(
             colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
             modifier = Modifier.fillMaxWidth()
         ) {
+            Icon(
+                imageVector = FluentIcons.FolderAdd24Regular,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "➕ Bind New Vault Folder",
+                text = "Bind New Vault Folder",
                 fontFamily = PoppinsFamily,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp
@@ -1009,15 +1048,26 @@ private fun ThemePickerSheetContent(
                         .clip(RoundedCornerShape(9.dp))
                         .clickable { onSelectIconStyle(IconStyle.VIBRANT) }
                 ) {
-                    Text(
-                        text = "🎨 Vibrant Coloured",
-                        fontFamily = InterFamily,
-                        fontWeight = if (isVibrant) FontWeight.SemiBold else FontWeight.Normal,
-                        fontSize = 12.sp,
-                        color = if (isVibrant) colors.onPrimary else colors.textSecondary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = FluentIcons.Color24Regular,
+                            contentDescription = null,
+                            tint = if (isVibrant) colors.onPrimary else colors.textSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Vibrant Coloured",
+                            fontFamily = InterFamily,
+                            fontWeight = if (isVibrant) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 12.sp,
+                            color = if (isVibrant) colors.onPrimary else colors.textSecondary
+                        )
+                    }
                 }
 
                 Surface(
@@ -1028,15 +1078,26 @@ private fun ThemePickerSheetContent(
                         .clip(RoundedCornerShape(9.dp))
                         .clickable { onSelectIconStyle(IconStyle.ADAPTIVE) }
                 ) {
-                    Text(
-                        text = "🎭 Theme Adaptive",
-                        fontFamily = InterFamily,
-                        fontWeight = if (!isVibrant) FontWeight.SemiBold else FontWeight.Normal,
-                        fontSize = 12.sp,
-                        color = if (!isVibrant) colors.onPrimary else colors.textSecondary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = FluentIcons.DarkTheme24Regular,
+                            contentDescription = null,
+                            tint = if (!isVibrant) colors.onPrimary else colors.textSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Theme Adaptive",
+                            fontFamily = InterFamily,
+                            fontWeight = if (!isVibrant) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 12.sp,
+                            color = if (!isVibrant) colors.onPrimary else colors.textSecondary
+                        )
+                    }
                 }
             }
         }
@@ -1381,8 +1442,14 @@ private fun DataPortabilitySheetContent(
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Icon(
+                    imageVector = FluentIcons.ArrowUpload24Regular,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "📦 Export Backup (.zip)",
+                    text = "Export Backup (.zip)",
                     fontFamily = PoppinsFamily,
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp
@@ -1396,8 +1463,15 @@ private fun DataPortabilitySheetContent(
                 border = BorderStroke(1.dp, colors.borderSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Icon(
+                    imageVector = FluentIcons.ArrowDownload24Regular,
+                    contentDescription = null,
+                    tint = colors.textPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "📥 Restore from Backup (.zip)",
+                    text = "Restore from Backup (.zip)",
                     fontFamily = PoppinsFamily,
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp,
@@ -1522,85 +1596,184 @@ private fun StorageCacheSheetContent(
 
 // 7. About Sheet
 @Composable
-private fun AboutSheetContent() {
+private fun AboutSheetContent(
+    onSendFeedback: () -> Unit,
+    onOpenGitHub: () -> Unit
+) {
     val colors = LocalMulberryColors.current
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 16.dp)
             .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // 1. HEADER & ICON REFINEMENT
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = colors.primary.copy(alpha = 0.12f),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shadowElevation = 4.dp,
             modifier = Modifier.size(64.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = FluentIcons.Book24Filled,
                     contentDescription = null,
-                    tint = colors.primary,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(36.dp)
                 )
             }
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Text(
                 text = "Mulberry",
-                fontFamily = PoppinsFamily,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
                 color = colors.textPrimary
             )
+
+            // Version Badge
+            Surface(
+                shape = RoundedCornerShape(100.dp),
+                color = colors.primary.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.25f))
+            ) {
+                Text(
+                    text = "v${BuildConfig.VERSION_NAME}",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = colors.primary,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Tagline
             Text(
-                text = "Version 1.0.0 (Build 2026.09)",
-                fontFamily = InterFamily,
-                fontSize = 13.sp,
-                color = colors.textSecondary
-            )
-            Text(
-                text = "Native Medical Reader & Vault Study Environment",
-                fontFamily = InterFamily,
+                text = "Deliberate reading. Indelible knowledge.",
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
                 color = colors.primary
             )
         }
 
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
-            border = BorderStroke(0.5.dp, colors.borderSubtle),
+        // 2. PHILOSOPHY & LOCAL TRUTH CARDS: "The Morula Principle"
+        OutlinedCard(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            border = BorderStroke(1.dp, colors.borderSubtle),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Leaf24Regular,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "The Morula Principle",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        color = colors.textPrimary
+                    )
+                }
+
                 Text(
-                    text = "Engineering Philosophy",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    color = colors.textPrimary
-                )
-                Text(
-                    text = "Mulberry was designed exclusively for medical students and clinicians navigating massive anatomical atlases and clinical textbooks. Zero tracking, zero mandatory cloud lock-in, and offline-first folder vault architecture.",
+                    text = "Named after the embryological morula (Latin for mulberry)—the earliest cluster of dividing cells before life takes complex form. Mastery in medicine follows the exact same pattern: competence is built through quiet, compounding divisions—sixteen pages digested today, an anatomical pathway understood tomorrow.",
                     fontFamily = InterFamily,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     color = colors.textSecondary,
-                    lineHeight = 18.sp
+                    lineHeight = 19.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        // 3. ACTION ROW & FOOTER
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onSendFeedback,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Icon(
+                    imageVector = FluentIcons.Mail24Regular,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Feedback",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary
+                )
+            }
+
+            OutlinedButton(
+                onClick = onOpenGitHub,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Icon(
+                    imageVector = FluentIcons.Code24Regular,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "GitHub",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary
+                )
+            }
+        }
+
+        // Bottom text caption
+        Text(
+            text = "Made with ❤️ by Sahabul.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 8.dp)
+        )
     }
 }
 
@@ -1616,7 +1789,7 @@ private fun sendDiagnosticFeedback(context: Context, themeTitle: String) {
             Diagnostics:
             • Device: ${Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }} ${Build.MODEL}
             • OS: Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})
-            • App: Mulberry v1.0.0
+            • App: Mulberry v${BuildConfig.VERSION_NAME}
             • Active Theme: $themeTitle
         """.trimIndent()
 

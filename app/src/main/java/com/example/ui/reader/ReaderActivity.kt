@@ -48,6 +48,8 @@ class ReaderActivity : AppCompatActivity() {
         const val EXTRA_BOOK_PATH = "BOOK_PATH"
         const val EXTRA_BOOK_TITLE = "BOOK_TITLE"
         const val EXTRA_BOOK_ID = "BOOK_ID"
+        const val EXTRA_START_PAGE = "EXTRA_START_PAGE"
+        const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
 
         fun launch(context: Context, bookPath: String, bookTitle: String, bookId: Int = -1) {
             val intent = Intent(context, ReaderActivity::class.java).apply {
@@ -57,11 +59,24 @@ class ReaderActivity : AppCompatActivity() {
             }
             context.startActivity(intent)
         }
+
+        fun launchSession(context: Context, bookPath: String, bookTitle: String, startPage: Int, sessionId: String) {
+            val intent = Intent(context, ReaderActivity::class.java).apply {
+                putExtra(EXTRA_BOOK_PATH, bookPath)
+                putExtra(EXTRA_BOOK_TITLE, bookTitle)
+                putExtra(EXTRA_START_PAGE, startPage)
+                putExtra(EXTRA_SESSION_ID, sessionId)
+            }
+            context.startActivity(intent)
+        }
     }
 
     private var bookPath: String = ""
     private var bookTitle: String = ""
     private var bookId: Int = -1
+    private var sessionId: String? = null
+    private var sessionStartPage: Int = -1
+    private var maxPageReached: Int = 1
 
     // Single-Page Reader Page States
     private val currentSinglePage = mutableIntStateOf(0)
@@ -109,28 +124,39 @@ class ReaderActivity : AppCompatActivity() {
         bookPath = intent.getStringExtra(EXTRA_BOOK_PATH) ?: ""
         bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE) ?: ""
         bookId = intent.getIntExtra(EXTRA_BOOK_ID, -1)
+        sessionId = intent.getStringExtra(EXTRA_SESSION_ID)
+        sessionStartPage = intent.getIntExtra(EXTRA_START_PAGE, -1)
+
+        if (sessionStartPage > 0) {
+            val startIdx = (sessionStartPage - 1).coerceAtLeast(0)
+            currentSinglePage.intValue = startIdx
+            singlePageTargetJump.intValue = startIdx
+            maxPageReached = sessionStartPage
+        }
 
         thumbnailManager = PdfThumbnailManager(applicationContext, bookPath)
         searchManager = PdfTextSearchManager(applicationContext, bookPath, totalPagesState.intValue)
 
-        // Restore last read page from database for seamless cold start
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val db = MulberryDatabase.getInstance(applicationContext)
-                val book = if (bookId != -1) {
-                    db.bookDao().getBookById(bookId)
-                } else {
-                    db.bookDao().getAllBooksSync().find { it.uriString == bookPath }
-                }
-                if (book != null && book.lastReadPage > 0) {
-                    withContext(Dispatchers.Main) {
-                        val zeroIdx = (book.lastReadPage - 1).coerceAtLeast(0)
-                        currentSinglePage.intValue = zeroIdx
-                        singlePageTargetJump.intValue = zeroIdx
+        // Restore last read page from database only if not launching a specific study session
+        if (sessionStartPage <= 0) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = MulberryDatabase.getInstance(applicationContext)
+                    val book = if (bookId != -1) {
+                        db.bookDao().getBookById(bookId)
+                    } else {
+                        db.bookDao().getAllBooksSync().find { it.uriString == bookPath }
                     }
+                    if (book != null && book.lastReadPage > 0) {
+                        withContext(Dispatchers.Main) {
+                            val zeroIdx = (book.lastReadPage - 1).coerceAtLeast(0)
+                            currentSinglePage.intValue = zeroIdx
+                            singlePageTargetJump.intValue = zeroIdx
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
 
@@ -230,6 +256,7 @@ class ReaderActivity : AppCompatActivity() {
                     activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
                     onPageChanged = { pageIndex ->
                         currentSinglePage.intValue = pageIndex
+                        maxPageReached = maxOf(maxPageReached, pageIndex + 1)
                     },
                     themeMode = activeTheme,
                     onToggleControls = { visible ->
@@ -453,6 +480,20 @@ class ReaderActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                }
+
+                // If launched from a scheduled reading session, mark completed in ScheduleRepository
+                val currentSessionId = sessionId
+                if (!currentSessionId.isNullOrBlank()) {
+                    val readCount = if (sessionStartPage > 0) {
+                        (maxPageReached - sessionStartPage + 1).coerceAtLeast(1)
+                    } else 1
+                    try {
+                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                            .markCompleted(currentSessionId, readCount)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

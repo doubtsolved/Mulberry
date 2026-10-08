@@ -1,6 +1,13 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -35,9 +42,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +84,27 @@ fun UpdateBottomSheet(
     val colors = LocalMulberryColors.current
     val context = LocalContext.current
 
+    // Glowing animation transitions for the upper border
+    val infiniteTransition = rememberInfiniteTransition(label = "update_glow_transition")
+    val glowPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "glow_phase"
+    )
+    val pulseGlow by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_glow"
+    )
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -73,15 +112,148 @@ fun UpdateBottomSheet(
         contentColor = colors.textPrimary,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 8.dp)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(colors.borderSubtle)
-            )
-        }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Subtle glowing sweep line underneath the upper border
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    colors.primary.copy(alpha = 0.45f * pulseGlow),
+                                    Color(0xFF818CF8).copy(alpha = 0.85f * pulseGlow),
+                                    Color(0xFF38BDF8).copy(alpha = 0.95f * pulseGlow),
+                                    Color(0xFFA855F7).copy(alpha = 0.85f * pulseGlow),
+                                    colors.primary.copy(alpha = 0.45f * pulseGlow),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                // Drag handle pill with synchronized glowing accent
+                Box(
+                    modifier = Modifier
+                        .padding(top = 10.dp, bottom = 8.dp)
+                        .width(40.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    colors.primary.copy(alpha = 0.5f * pulseGlow),
+                                    Color(0xFF818CF8).copy(alpha = 0.9f * pulseGlow),
+                                    colors.primary.copy(alpha = 0.5f * pulseGlow)
+                                )
+                            )
+                        )
+                )
+            }
+        },
+        modifier = Modifier
+            .drawBehind {
+                // Outer ambient halo glowing around the upper curved border
+                val cornerRadius = 24.dp.toPx()
+                val w = size.width
+                val glowPath = Path().apply {
+                    moveTo(0f, cornerRadius + 28.dp.toPx())
+                    lineTo(0f, cornerRadius)
+                    arcTo(
+                        rect = Rect(0f, 0f, 2 * cornerRadius, 2 * cornerRadius),
+                        startAngleDegrees = 180f,
+                        sweepAngleDegrees = 90f,
+                        forceMoveTo = false
+                    )
+                    lineTo(w - cornerRadius, 0f)
+                    arcTo(
+                        rect = Rect(w - 2 * cornerRadius, 0f, w, 2 * cornerRadius),
+                        startAngleDegrees = 270f,
+                        sweepAngleDegrees = 90f,
+                        forceMoveTo = false
+                    )
+                    lineTo(w, cornerRadius + 28.dp.toPx())
+                }
+
+                val startOffset = -w + (2 * w * glowPhase)
+                val glowBrush = Brush.linearGradient(
+                    colors = listOf(
+                        colors.primary.copy(alpha = 0.35f * pulseGlow),
+                        Color(0xFF818CF8).copy(alpha = 0.8f * pulseGlow),
+                        Color(0xFF38BDF8).copy(alpha = 0.95f * pulseGlow),
+                        colors.primary.copy(alpha = 0.95f * pulseGlow),
+                        Color(0xFFA855F7).copy(alpha = 0.8f * pulseGlow),
+                        colors.primary.copy(alpha = 0.35f * pulseGlow)
+                    ),
+                    start = Offset(startOffset, 0f),
+                    end = Offset(startOffset + w, 0f),
+                    tileMode = TileMode.Repeated
+                )
+
+                // Soft outer glowing blur
+                drawPath(
+                    path = glowPath,
+                    brush = glowBrush,
+                    style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+            .drawWithContent {
+                drawContent()
+
+                val cornerRadius = 24.dp.toPx()
+                val w = size.width
+                val glowPath = Path().apply {
+                    moveTo(0f, cornerRadius + 24.dp.toPx())
+                    lineTo(0f, cornerRadius)
+                    arcTo(
+                        rect = Rect(0f, 0f, 2 * cornerRadius, 2 * cornerRadius),
+                        startAngleDegrees = 180f,
+                        sweepAngleDegrees = 90f,
+                        forceMoveTo = false
+                    )
+                    lineTo(w - cornerRadius, 0f)
+                    arcTo(
+                        rect = Rect(w - 2 * cornerRadius, 0f, w, 2 * cornerRadius),
+                        startAngleDegrees = 270f,
+                        sweepAngleDegrees = 90f,
+                        forceMoveTo = false
+                    )
+                    lineTo(w, cornerRadius + 24.dp.toPx())
+                }
+
+                val startOffset = -w + (2 * w * glowPhase)
+                val coreBrush = Brush.linearGradient(
+                    colors = listOf(
+                        colors.primary.copy(alpha = 0.4f * pulseGlow),
+                        Color(0xFF818CF8).copy(alpha = 0.95f * pulseGlow),
+                        Color(0xFF38BDF8).copy(alpha = 1f * pulseGlow),
+                        colors.primary.copy(alpha = 1f * pulseGlow),
+                        Color(0xFFA855F7).copy(alpha = 0.95f * pulseGlow),
+                        colors.primary.copy(alpha = 0.4f * pulseGlow)
+                    ),
+                    start = Offset(startOffset, 0f),
+                    end = Offset(startOffset + w, 0f),
+                    tileMode = TileMode.Repeated
+                )
+
+                // Mid glow stroke
+                drawPath(
+                    path = glowPath,
+                    brush = coreBrush,
+                    style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // Crisp neon highlight line along the upper border
+                drawPath(
+                    path = glowPath,
+                    brush = coreBrush,
+                    style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
     ) {
         Column(
             modifier = Modifier
@@ -203,11 +375,11 @@ private fun StateAChangelog(
                     fontSize = 13.sp,
                     color = colors.textMuted
                 )
-                Text(
-                    text = "──➔",
-                    fontFamily = InterFamily,
-                    fontSize = 13.sp,
-                    color = colors.primary
+                Icon(
+                    imageVector = FluentIcons.ArrowRight24Regular,
+                    contentDescription = "to",
+                    tint = colors.primary,
+                    modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = "New: ${release.tagName}${if (release.formattedSize.isNotBlank()) " • " + release.formattedSize else ""}",
@@ -235,24 +407,24 @@ private fun StateAChangelog(
             border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 200.dp)
+                .heightIn(max = 240.dp)
         ) {
             val changelogText = if (release.changelog.isNotBlank()) {
                 release.changelog.trim()
             } else {
                 "• Performance and stability enhancements\n• Bug fixes and library optimizations"
             }
-            Text(
-                text = changelogText,
-                fontFamily = InterFamily,
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-                color = colors.textPrimary,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(14.dp)
-            )
+            ) {
+                MarkdownView(
+                    markdown = changelogText,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         // Action Buttons: [ Later ] [ Update Now ]

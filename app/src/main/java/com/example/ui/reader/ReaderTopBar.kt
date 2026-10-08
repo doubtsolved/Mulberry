@@ -762,9 +762,11 @@ fun ReaderTocSheetContent(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(24.dp)
                     ) {
-                        Text(
-                            text = "📑",
-                            fontSize = 38.sp
+                        Icon(
+                            imageVector = FluentIcons.Toc24Regular,
+                            contentDescription = null,
+                            tint = colors.textSecondary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(42.dp)
                         )
                         Text(
                             text = "No table of contents found in this PDF.",

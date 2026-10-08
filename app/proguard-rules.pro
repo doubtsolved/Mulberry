@@ -18,13 +18,18 @@
 -dontwarn androidx.room.paging.**
 
 # ------------------------------------------------------------------------------
-# Gson Serialization Rules (UserProfile, Metadata, BackupManager)
+# Gson Serialization Rules (UserProfile, Metadata, Schedule, BackupManager)
 # ------------------------------------------------------------------------------
 -keep class com.google.gson.** { *; }
--keep class com.example.data.model.** { *; }
+-keep class com.example.data.** { *; }
+-keepclassmembers class com.example.data.** { *; }
+-keep class com.example.data.schedule.model.** { *; }
+-keepclassmembers class com.example.data.schedule.model.** { *; }
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers @androidx.annotation.Keep class * { *; }
 
 # ------------------------------------------------------------------------------
 # PdfiumCore Native JNI Bindings (TOC & PDF Metadata extraction)
