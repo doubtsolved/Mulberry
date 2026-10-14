@@ -4,14 +4,18 @@ import com.example.data.dao.AgendaTaskDao
 import com.example.data.dao.AnnotationDao
 import com.example.data.dao.BookDao
 import com.example.data.dao.ExamDao
+import com.example.data.dao.SnipDao
 import com.example.data.dao.VaultDao
 import com.example.data.model.AgendaTaskEntity
 import com.example.data.model.AnnotationEntity
 import com.example.data.model.BookEntity
 import com.example.data.model.ExamEntity
+import com.example.data.model.SnipEntity
 import com.example.data.model.VaultEntity
+import com.example.data.catalog.CatalogSyncEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,15 +25,31 @@ class MulberryRepository(
     private val bookDao: BookDao,
     private val agendaTaskDao: AgendaTaskDao,
     private val examDao: ExamDao,
-    private val annotationDao: AnnotationDao
+    private val annotationDao: AnnotationDao,
+    private val snipDao: SnipDao? = null
 ) {
     private val bookRepository = BookRepository(bookDao, vaultDao)
+    private val catalogSyncEngine = CatalogSyncEngine(bookDao)
 
     val allVaults: Flow<List<VaultEntity>> = vaultDao.getAllVaults()
     val allBooks: Flow<List<BookEntity>> = bookDao.getAllBooks()
+    val downloadedBooks: Flow<List<BookEntity>> = bookDao.getDownloadedBooks()
     val continueReadingBooks: Flow<List<BookEntity>> = bookDao.getContinueReadingBooks()
     val allTasks: Flow<List<AgendaTaskEntity>> = agendaTaskDao.getAllTasks()
     val allExams: Flow<List<ExamEntity>> = examDao.getAllExams()
+    val allSnips: Flow<List<SnipEntity>> = snipDao?.getAllSnips() ?: flowOf(emptyList())
+
+    suspend fun syncCatalog() = catalogSyncEngine.syncCatalog()
+
+    suspend fun addSnip(snip: SnipEntity): Long = snipDao?.insertSnip(snip) ?: 0L
+
+    suspend fun deleteSnip(snip: SnipEntity) {
+        snipDao?.deleteSnip(snip)
+    }
+
+    suspend fun deleteSnipById(snipId: Int) {
+        snipDao?.deleteSnipById(snipId)
+    }
 
     suspend fun syncVaultWithDisk(vaultPath: String, vaultId: String) =
         bookRepository.syncVaultWithDisk(vaultPath, vaultId)

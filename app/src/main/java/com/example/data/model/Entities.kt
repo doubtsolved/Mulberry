@@ -16,25 +16,55 @@ data class VaultEntity(
 @Entity(tableName = "books")
 data class BookEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val vaultId: Int,
+    val vaultId: Int = 1,
     val title: String,
     val author: String = "",
-    val fileName: String,
-    val uriString: String,
+    val fileName: String = "",
+    val uriString: String = "",
     val pageCount: Int = 1,
     val fileSizeBytes: Long = 0L,
     val isFavorite: Boolean = false,
     val lastReadPage: Int = 1,
     val progressPercent: Int = 0,
     val lastReadTimestamp: Long = 0L,
-    val parentFolder: String = "Vault"
+    val parentFolder: String = "Vault",
+    // Catalog fields
+    val slug: String = "",
+    val edition: String = "",
+    val prof: String = "",
+    val year: String = "",
+    val subject: String = "",
+    val type: String = "",
+    val tagsCsv: String = "",
+    val sizeMb: Double = 0.0,
+    val coverUrl: String = "",
+    val downloadUrl: String = "",
+    val driveFallbackUrl: String = "",
+    val telegramDeepLink: String = "",
+    val uploader: String = "",
+    val isDownloaded: Boolean = false,
+    val binFilePath: String = ""
 )
 
-val BookEntity.path: String get() = uriString
-val BookEntity.fileSize: Long get() = fileSizeBytes
-val BookEntity.rawFileName: String get() = fileName
+val BookEntity.path: String get() = if (binFilePath.isNotBlank()) binFilePath else uriString
+val BookEntity.fileSize: Long get() = if (fileSizeBytes > 0) fileSizeBytes else (sizeMb * 1024 * 1024).toLong()
+val BookEntity.rawFileName: String get() = fileName.ifEmpty { "$slug.bin" }
 val BookEntity.lastPage: Int get() = lastReadPage
 val BookEntity.totalPages: Int get() = pageCount
+
+@Entity(tableName = "snips")
+data class SnipEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val bookId: Int = 0,
+    val bookSlug: String = "",
+    val bookTitle: String = "",
+    val subject: String = "",
+    val pageNumber: Int = 1,
+    val title: String = "",
+    val tags: String = "",
+    val imagePath: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
 
 @Entity(tableName = "agenda_tasks")
 data class AgendaTaskEntity(

@@ -105,3 +105,22 @@ interface AnnotationDao {
     @Query("DELETE FROM annotations WHERE bookId = :bookId")
     suspend fun deleteAllAnnotationsForBook(bookId: Int)
 }
+
+@Dao
+interface SnipDao {
+    @Query("SELECT * FROM snips ORDER BY createdAt DESC")
+    fun getAllSnips(): Flow<List<com.example.data.model.SnipEntity>>
+
+    @Query("SELECT * FROM snips WHERE subject = :subject ORDER BY createdAt DESC")
+    fun getSnipsBySubject(subject: String): Flow<List<com.example.data.model.SnipEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSnip(snip: com.example.data.model.SnipEntity): Long
+
+    @Delete
+    suspend fun deleteSnip(snip: com.example.data.model.SnipEntity)
+
+    @Query("DELETE FROM snips WHERE id = :id")
+    suspend fun deleteSnipById(id: Int)
+}
+

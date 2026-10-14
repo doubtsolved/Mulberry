@@ -8,27 +8,31 @@ import com.example.data.dao.AgendaTaskDao
 import com.example.data.dao.AnnotationDao
 import com.example.data.dao.BookDao
 import com.example.data.dao.ExamDao
+import com.example.data.dao.SnipDao
 import com.example.data.dao.VaultDao
 import com.example.data.model.AgendaTaskEntity
 import com.example.data.model.AnnotationEntity
 import com.example.data.model.BookEntity
 import com.example.data.model.ExamEntity
+import com.example.data.model.SnipEntity
 import com.example.data.model.VaultEntity
 
 @Database(
     entities = [
         VaultEntity::class,
         BookEntity::class,
+        SnipEntity::class,
         AgendaTaskEntity::class,
         ExamEntity::class,
         AnnotationEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class MulberryDatabase : RoomDatabase() {
     abstract fun vaultDao(): VaultDao
     abstract fun bookDao(): BookDao
+    abstract fun snipDao(): SnipDao
     abstract fun agendaTaskDao(): AgendaTaskDao
     abstract fun examDao(): ExamDao
     abstract fun annotationDao(): AnnotationDao

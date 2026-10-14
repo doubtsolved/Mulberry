@@ -64,4 +64,23 @@ interface BookDao {
 
     @Query("DELETE FROM books")
     suspend fun clearAllBooks()
+
+    @Query("SELECT * FROM books WHERE slug = :slug LIMIT 1")
+    suspend fun getBookBySlug(slug: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE isDownloaded = 1 ORDER BY lastReadTimestamp DESC, title ASC")
+    fun getDownloadedBooks(): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books WHERE isDownloaded = 1")
+    suspend fun getDownloadedBooksSync(): List<BookEntity>
+
+    @Query("DELETE FROM books WHERE slug != '' AND slug NOT IN (:remoteSlugs) AND isDownloaded = 0")
+    suspend fun pruneGhostBooks(remoteSlugs: List<String>)
+
+    @Query("UPDATE books SET isDownloaded = :isDownloaded, binFilePath = :binFilePath, fileSizeBytes = :fileSizeBytes WHERE id = :id")
+    suspend fun updateDownloadState(id: Int, isDownloaded: Boolean, binFilePath: String, fileSizeBytes: Long)
+
+    @Query("UPDATE books SET isDownloaded = :isDownloaded, binFilePath = :binFilePath, fileSizeBytes = :fileSizeBytes WHERE slug = :slug")
+    suspend fun updateDownloadStateBySlug(slug: String, isDownloaded: Boolean, binFilePath: String, fileSizeBytes: Long)
 }
+

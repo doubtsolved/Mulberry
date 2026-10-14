@@ -36,10 +36,29 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
     private val _vaultBooks = MutableStateFlow<List<BookEntity>>(emptyList())
     val vaultBooks: StateFlow<List<BookEntity>> = _vaultBooks.asStateFlow()
 
+    private val downloadManager = com.example.util.BookDownloadManager.getInstance(application, db.bookDao())
+
+    val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    fun deleteDownloadedBook(book: BookEntity) {
+        viewModelScope.launch {
+            downloadManager.deleteDownload(book)
+        }
+    }
+
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     init {
+        // Synchronize physical /sdcard/Mulberry/ storage with database
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.util.MulberryStorageManager.syncDiskWithDatabase(application, db.bookDao())
+        }
+
         // Observe database vaults and active vault selection
         viewModelScope.launch {
             db.vaultDao().getAllVaults().collect { vaults ->
@@ -251,6 +270,7 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
+                com.example.util.MulberryStorageManager.syncDiskWithDatabase(getApplication(), db.bookDao())
                 scheduleRepo.loadSchedule()
                 val current = _activeVault.value
                 if (current != null) {

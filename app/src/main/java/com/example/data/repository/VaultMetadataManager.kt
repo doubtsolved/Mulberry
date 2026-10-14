@@ -14,7 +14,7 @@ import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
+import com.example.util.SafeFileWriter
 
 object VaultMetadataManager {
     @Volatile
@@ -37,32 +37,11 @@ object VaultMetadataManager {
     }
 
     private fun writeAtomic(targetFile: File, content: String) {
-        val atomicFile = AtomicFile(targetFile)
-        var fos: FileOutputStream? = null
-        try {
-            fos = atomicFile.startWrite()
-            fos.write(content.toByteArray(Charsets.UTF_8))
-            atomicFile.finishWrite(fos)
-        } catch (e: Exception) {
-            if (fos != null) {
-                atomicFile.failWrite(fos)
-            }
-            e.printStackTrace()
-        }
+        SafeFileWriter.writeAtomically(targetFile, content)
     }
 
     private fun readAtomic(file: File): String? {
-        if (!file.exists()) return null
-        return try {
-            val atomicFile = AtomicFile(file)
-            atomicFile.readFully().toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            try {
-                file.readText(Charsets.UTF_8)
-            } catch (_: Exception) {
-                null
-            }
-        }
+        return SafeFileWriter.readSafely(file)
     }
 
     suspend fun hydrateDatabaseFromMetadata(

@@ -89,8 +89,21 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
         bookDao = db.bookDao(),
         agendaTaskDao = db.agendaTaskDao(),
         examDao = db.examDao(),
-        annotationDao = db.annotationDao()
+        annotationDao = db.annotationDao(),
+        snipDao = db.snipDao()
     )
+    val downloadManager = com.example.util.BookDownloadManager.getInstance(application, db.bookDao())
+    val downloadedBooks: StateFlow<List<BookEntity>> = repository.downloadedBooks.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+    val allSnips: StateFlow<List<com.example.data.model.SnipEntity>> = repository.allSnips.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+    val downloadState = downloadManager.downloadState
 
     private val prefs = application.getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
     val userProfileRepository = UserProfileRepository.getInstance(application)
@@ -99,6 +112,13 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
     fun saveUserProfile(updated: UserProfile) {
         viewModelScope.launch {
             userProfileRepository.updateProfile(updated, activeVault.value?.rootPath)
+        }
+    }
+
+    fun setSelectedProf(profId: String) {
+        val current = userProfile.value
+        if (current.selectedProf != profId) {
+            saveUserProfile(current.copy(selectedProf = profId))
         }
     }
 
@@ -444,21 +464,57 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refreshLibrary() {
-        val currentVault = activeVault.value ?: allVaults.value.firstOrNull() ?: return
-        val rootPath = currentVault.pathDisplay.ifEmpty { currentVault.uriString }
-        if (rootPath.isBlank()) return
-
         if (syncJob?.isActive == true) return
 
         syncJob = viewModelScope.launch(Dispatchers.IO) {
             _isSyncing.value = true
             try {
-                repository.syncVaultWithDisk(rootPath, currentVault.id.toString())
+                // 1. Sync remote catalog from edge CDN
+                repository.syncCatalog()
+
+                // 2. Sync active local vault if available
+                val currentVault = activeVault.value ?: allVaults.value.firstOrNull()
+                val rootPath = currentVault?.pathDisplay?.ifEmpty { currentVault.uriString }
+                if (!rootPath.isNullOrBlank()) {
+                    repository.syncVaultWithDisk(rootPath, currentVault.id.toString())
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 _isSyncing.value = false
             }
+        }
+    }
+
+    fun downloadBook(book: BookEntity) {
+        downloadManager.downloadBook(book)
+    }
+
+    fun cancelDownload(bookSlug: String) {
+        downloadManager.cancelDownload(bookSlug)
+    }
+
+    fun deleteDownloadedBook(book: BookEntity) {
+        viewModelScope.launch {
+            downloadManager.deleteDownload(book)
+        }
+    }
+
+    fun addSnip(snip: com.example.data.model.SnipEntity) {
+        viewModelScope.launch {
+            repository.addSnip(snip)
+        }
+    }
+
+    fun deleteSnip(snip: com.example.data.model.SnipEntity) {
+        viewModelScope.launch {
+            repository.deleteSnip(snip)
+        }
+    }
+
+    fun deleteSnipById(snipId: Int) {
+        viewModelScope.launch {
+            repository.deleteSnipById(snipId)
         }
     }
 

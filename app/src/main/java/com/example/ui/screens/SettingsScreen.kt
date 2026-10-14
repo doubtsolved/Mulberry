@@ -70,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -200,7 +201,7 @@ fun SettingsScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .background(colors.background)
+                .background(colors.backgroundGradient)
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -217,6 +218,11 @@ fun SettingsScreen(
             )
 
             // TOP PROFILE HERO CARD
+            val activeCurriculum = remember(userProfile.selectedProf) {
+                MBBS_CURRICULUM.find { it.id.equals(userProfile.selectedProf, ignoreCase = true) }
+                    ?: MBBS_CURRICULUM[0]
+            }
+
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = colors.surfaceCard,
@@ -275,29 +281,60 @@ fun SettingsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = colors.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.padding(top = 4.dp)
+
+                        Row(
+                            modifier = Modifier.padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = colors.primary.copy(alpha = 0.14f)
                             ) {
-                                Icon(
-                                    imageVector = FluentIcons.Target24Regular,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Target: ${userProfile.dailyPageGoal} pages/day",
-                                    fontFamily = InterFamily,
-                                    fontWeight = FontWeight.Normal,
-                                    fontSize = 11.sp,
-                                    color = colors.primary
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = FluentIcons.Bookmark24Regular,
+                                        contentDescription = null,
+                                        tint = colors.primary,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = activeCurriculum.shortName,
+                                        fontFamily = InterFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        color = colors.primary
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = colors.surfaceTint.copy(alpha = 0.35f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = FluentIcons.Target24Regular,
+                                        contentDescription = null,
+                                        tint = colors.textSecondary,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "${userProfile.dailyPageGoal} p/d",
+                                        fontFamily = InterFamily,
+                                        fontWeight = FontWeight.Normal,
+                                        fontSize = 11.sp,
+                                        color = colors.textSecondary
+                                    )
+                                }
                             }
                         }
                     }
@@ -363,24 +400,73 @@ fun SettingsScreen(
             }
 
             // GROUP 3: DATA & STORAGE
+            val downloadedBooksList by viewModel.downloadedBooks.collectAsState()
+            val downloadedBooksCount = downloadedBooksList.size
+            val downloadedStorageMb = (viewModel.downloadManager.getTotalVaultStorageBytes() / (1024.0 * 1024.0))
+            val formattedStorage = if (downloadedStorageMb > 0) String.format(Locale.getDefault(), "%.1f MB", downloadedStorageMb) else "${StorageMetricsHelper.formatFileSize(context, cacheSizeBytes)}"
+
             SettingsCategoryGroup(
-                title = "DATA & STORAGE",
+                title = "STORAGE",
                 titleColor = colors.primary
             ) {
+                // User-friendly storage tile: "Offline Storage: X MB (Y Books Downloaded)"
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.surfaceCard,
+                    border = BorderStroke(0.5.dp, colors.borderSubtle),
+                    modifier = Modifier.fillMaxWidth().testTag("offline_storage_tile")
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "Offline Storage: $formattedStorage",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = colors.textPrimary
+                            )
+                            Text(
+                                text = "($downloadedBooksCount Books Downloaded)",
+                                fontFamily = InterFamily,
+                                fontSize = 13.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                settingsViewModel.clearCache {
+                                    Toast.makeText(context, "Temp cache cleared", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primary.copy(alpha = 0.12f),
+                                contentColor = colors.primary
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                        ) {
+                            Text(
+                                text = "Clear Temp Cache",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
+
                 SettingsItemRow(
                     icon = FluentIcons.LibrarySpines24Regular,
                     title = "Data Portability (.zip)",
                     valueLabel = "Active",
                     iconTint = getSemanticIconTint(SemanticColors.Pdf, iconStyle),
                     onClick = { activeSheet = ActiveSettingsSheet.DATA_PORTABILITY }
-                )
-                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
-                SettingsItemRow(
-                    icon = FluentIcons.Delete24Regular,
-                    title = "Storage & Cache",
-                    valueLabel = StorageMetricsHelper.formatFileSize(context, cacheSizeBytes),
-                    iconTint = getSemanticIconTint(SemanticColors.Target, iconStyle),
-                    onClick = { activeSheet = ActiveSettingsSheet.STORAGE_CACHE }
                 )
             }
 
@@ -1109,7 +1195,9 @@ private fun ThemePickerSheetContent(
                 desc = "Warm sepia tones for blue-light eye comfort.",
                 bgColor = Color(0xFFFBF0D9),
                 surfaceColor = Color(0xFFF4E6C3),
-                accentColor = Color(0xFFC26D38)
+                accentColor = Color(0xFFC26D38),
+                gradientTop = Color(0xFFFDF6E2),
+                gradientBottom = Color(0xFFF3E7C4)
             ),
             ThemeOption(
                 mode = ThemeMode.PAPER,
@@ -1117,7 +1205,9 @@ private fun ThemePickerSheetContent(
                 desc = "Crisp, daylight paper finish with clean contrast.",
                 bgColor = Color(0xFFFFFFFF),
                 surfaceColor = Color(0xFFF1F5F9),
-                accentColor = Color(0xFF2563EB)
+                accentColor = Color(0xFF2563EB),
+                gradientTop = Color(0xFFFFFFFF),
+                gradientBottom = Color(0xFFF1F5F9)
             ),
             ThemeOption(
                 mode = ThemeMode.MIDNIGHT,
@@ -1125,7 +1215,9 @@ private fun ThemePickerSheetContent(
                 desc = "Deep pitch-black interface that maximizes battery savings.",
                 bgColor = Color(0xFF000000),
                 surfaceColor = Color(0xFF121212),
-                accentColor = Color(0xFF38BDF8)
+                accentColor = Color(0xFF38BDF8),
+                gradientTop = Color(0xFF000000),
+                gradientBottom = Color(0xFF0D1117)
             ),
             ThemeOption(
                 mode = ThemeMode.FOREST,
@@ -1133,7 +1225,9 @@ private fun ThemePickerSheetContent(
                 desc = "Calming sage dark tones inspired by natural pine.",
                 bgColor = Color(0xFF111A15),
                 surfaceColor = Color(0xFF19261F),
-                accentColor = Color(0xFF4ADE80)
+                accentColor = Color(0xFF4ADE80),
+                gradientTop = Color(0xFF14201A),
+                gradientBottom = Color(0xFF0D1410)
             ),
             ThemeOption(
                 mode = ThemeMode.ESPRESSO,
@@ -1141,7 +1235,9 @@ private fun ThemePickerSheetContent(
                 desc = "Warm roasted mocha tones with golden amber accents.",
                 bgColor = Color(0xFF1A1412),
                 surfaceColor = Color(0xFF261E1A),
-                accentColor = Color(0xFFF59E0B)
+                accentColor = Color(0xFFF59E0B),
+                gradientTop = Color(0xFF1E1715),
+                gradientBottom = Color(0xFF140F0D)
             ),
             ThemeOption(
                 mode = ThemeMode.DUSK,
@@ -1149,7 +1245,9 @@ private fun ThemePickerSheetContent(
                 desc = "Twilight indigo slate theme with gentle purple tints.",
                 bgColor = Color(0xFF13111C),
                 surfaceColor = Color(0xFF1E1B2E),
-                accentColor = Color(0xFFA78BFA)
+                accentColor = Color(0xFFA78BFA),
+                gradientTop = Color(0xFF181524),
+                gradientBottom = Color(0xFF0F0D17)
             )
         )
 
@@ -1179,29 +1277,35 @@ private fun ThemePickerSheetContent(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 3-circle Color Preview Swatch
-                        Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                        // Gradient + 2-circle Swatch Preview
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(opt.bgColor)
-                                    .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
+                                    .width(24.dp)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Brush.verticalGradient(listOf(opt.gradientTop, opt.gradientBottom)))
+                                    .border(1.dp, Color.Black.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
                             )
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(opt.surfaceColor)
-                                    .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(opt.accentColor)
-                                    .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(opt.surfaceColor)
+                                        .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(opt.accentColor)
+                                        .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(14.dp))
@@ -1244,7 +1348,9 @@ private data class ThemeOption(
     val desc: String,
     val bgColor: Color,
     val surfaceColor: Color,
-    val accentColor: Color
+    val accentColor: Color,
+    val gradientTop: Color,
+    val gradientBottom: Color
 )
 
 // 3. Reading Preferences Sheet
@@ -1766,7 +1872,7 @@ private fun AboutSheetContent(
 
         // Bottom text caption
         Text(
-            text = "Made with ❤️ by Sahabul.",
+            text = "Made by Sahabul.",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

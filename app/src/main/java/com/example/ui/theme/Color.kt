@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 enum class ThemeMode(val title: String) {
@@ -67,8 +68,13 @@ data class MulberryColors(
     val accentDanger: Color,
     val accentSuccess: Color,
     val accentWarning: Color,
-    val isDark: Boolean
-)
+    val isDark: Boolean,
+    val gradientTop: Color = background,
+    val gradientBottom: Color = surface
+) {
+    val backgroundGradient: Brush
+        get() = Brush.verticalGradient(listOf(gradientTop, gradientBottom))
+}
 
 // 1. OLDED (Warm Sepia)
 val OldedSepiaBackground = Color(0xFFFBF0D9)
@@ -92,7 +98,9 @@ val MulberryOldedPalette = MulberryColors(
     accentDanger = Color(0xFFC2410C),
     accentSuccess = Color(0xFF047857),
     accentWarning = Color(0xFFB45309),
-    isDark = false
+    isDark = false,
+    gradientTop = Color(0xFFFBF0D9),
+    gradientBottom = Color(0xFFF4E5C0)
 )
 
 // 2. PAPER (Clean White)
@@ -117,7 +125,9 @@ val MulberryPaperPalette = MulberryColors(
     accentDanger = Color(0xFFEF4444),
     accentSuccess = Color(0xFF10B981),
     accentWarning = Color(0xFFF59E0B),
-    isDark = false
+    isDark = false,
+    gradientTop = Color(0xFFFFFFFF),
+    gradientBottom = Color(0xFFF1F5F9)
 )
 
 // 3. MIDNIGHT (Pitch OLED)
@@ -142,7 +152,9 @@ val MulberryMidnightPalette = MulberryColors(
     accentDanger = Color(0xFFF87171),
     accentSuccess = Color(0xFF34D399),
     accentWarning = Color(0xFFFBBF24),
-    isDark = true
+    isDark = true,
+    gradientTop = Color(0xFF0D1117),
+    gradientBottom = Color(0xFF000000)
 )
 
 // 4. FOREST (Sage Dark)
@@ -167,7 +179,9 @@ val MulberryForestPalette = MulberryColors(
     accentDanger = Color(0xFFF87171),
     accentSuccess = Color(0xFF4ADE80),
     accentWarning = Color(0xFFFBBF24),
-    isDark = true
+    isDark = true,
+    gradientTop = Color(0xFF14201A),
+    gradientBottom = Color(0xFF0C130F)
 )
 
 // 5. ESPRESSO (Mocha Dark)
@@ -192,7 +206,9 @@ val MulberryEspressoPalette = MulberryColors(
     accentDanger = Color(0xFFEF4444),
     accentSuccess = Color(0xFF10B981),
     accentWarning = Color(0xFFF59E0B),
-    isDark = true
+    isDark = true,
+    gradientTop = Color(0xFF221A17),
+    gradientBottom = Color(0xFF140F0D)
 )
 
 // 6. DUSK (Lavender/Indigo)
@@ -217,7 +233,9 @@ val MulberryDuskPalette = MulberryColors(
     accentDanger = Color(0xFFF87171),
     accentSuccess = Color(0xFF34D399),
     accentWarning = Color(0xFFFBBF24),
-    isDark = true
+    isDark = true,
+    gradientTop = Color(0xFF191526),
+    gradientBottom = Color(0xFF0E0C16)
 )
 
 // Backward compatibility references

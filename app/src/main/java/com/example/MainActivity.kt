@@ -17,6 +17,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,6 +26,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -199,6 +204,33 @@ fun MulberryApp(viewModel: MulberryViewModel) {
 
     val showBottomBar = !isReaderOpen
 
+    val initialPageIndex = remember { visibleTabs.indexOf(currentTab).coerceAtLeast(0) }
+    val pagerState = rememberPagerState(
+        initialPage = initialPageIndex,
+        pageCount = { visibleTabs.size }
+    )
+
+    // Synchronize programmatic tab changes to the pager immediately
+    LaunchedEffect(currentTab, visibleTabs) {
+        val targetIndex = visibleTabs.indexOf(currentTab)
+        if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
+            pagerState.scrollToPage(targetIndex)
+        }
+    }
+
+    // Synchronize sideways user sliding gestures back to viewModel's currentTab.
+    // By observing settledPage, we only update the selected tab AFTER a swipe finishes,
+    // avoiding race conditions during multi-page programmatic navigation.
+    LaunchedEffect(pagerState, visibleTabs) {
+        snapshotFlow { pagerState.settledPage }
+            .collect { settledIndex ->
+                val newTab = visibleTabs.getOrNull(settledIndex)
+                if (newTab != null && newTab != currentTab) {
+                    viewModel.setTab(newTab)
+                }
+            }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -206,7 +238,15 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 if (showBottomBar) {
                     MulberryBottomNavBar(
                         selectedTab = currentTab,
-                        onTabSelected = { viewModel.setTab(it) },
+                        onTabSelected = { tab ->
+                            viewModel.setTab(tab)
+                            val targetIndex = visibleTabs.indexOf(tab)
+                            if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
+                                coroutineScope.launch {
+                                    pagerState.scrollToPage(targetIndex)
+                                }
+                            }
+                        },
                         tabs = visibleTabs,
                         onTabLongClick = { viewModel.openCustomizeTabsSheet() }
                     )
@@ -218,19 +258,19 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                     .fillMaxSize()
                     .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
             ) {
-                AnimatedContent(
-                    targetState = currentTab,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
-                    },
-                    label = "TabContent"
-                ) { tab ->
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { pageIndex ->
+                    val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
                     when (tab) {
                         MulberryTab.LIBRARY -> LibraryScreen(
                             viewModel = viewModel,
                             modifier = Modifier.fillMaxSize()
                         )
                         MulberryTab.SNIPS -> SnipsScreen(
+                            viewModel = viewModel,
                             modifier = Modifier.fillMaxSize()
                         )
                         MulberryTab.DESK -> DeskRootScreen(
@@ -251,7 +291,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 val book = currentBook!!
                 ReaderActivity.launch(
                     context = context,
-                    bookPath = book.uriString,
+                    bookPath = book.binFilePath.ifEmpty { book.uriString },
                     bookTitle = book.title,
                     bookId = book.id
                 )

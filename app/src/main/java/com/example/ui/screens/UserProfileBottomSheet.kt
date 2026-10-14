@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +25,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -33,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -62,6 +70,7 @@ fun UserProfileBottomSheet(
     var targetExamOrSubject by remember(userProfile) { mutableStateOf(userProfile.targetExamOrSubject) }
     var institution by remember(userProfile) { mutableStateOf(userProfile.institution) }
     var dailyPageGoalText by remember(userProfile) { mutableStateOf(userProfile.dailyPageGoal.toString()) }
+    var selectedProf by remember(userProfile) { mutableStateOf(userProfile.selectedProf) }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -95,6 +104,79 @@ fun UserProfileBottomSheet(
                     fontSize = 13.sp,
                     color = colors.textSecondary
                 )
+            }
+
+            // MBBS Professional Selection Section
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "MBBS Professional Year",
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = colors.textPrimary
+                )
+                Text(
+                    text = "Configures your primary bookshelf, subjects, and study feed",
+                    fontFamily = InterFamily,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MBBS_CURRICULUM.forEach { prof ->
+                        val isSelected = selectedProf.equals(prof.id, ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) colors.primary.copy(alpha = 0.10f) else colors.surfaceCard,
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) colors.primary else colors.borderSubtle
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedProf = prof.id }
+                                .testTag("prof_select_${prof.id.replace(" ", "_").lowercase()}")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { selectedProf = prof.id },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = colors.primary,
+                                        unselectedColor = colors.textMuted
+                                    ),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = prof.title,
+                                        fontFamily = PoppinsFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        color = if (isSelected) colors.primary else colors.textPrimary
+                                    )
+                                    Text(
+                                        text = prof.subjects.joinToString(" • "),
+                                        fontFamily = InterFamily,
+                                        fontSize = 11.5.sp,
+                                        color = colors.textSecondary,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -166,7 +248,7 @@ fun UserProfileBottomSheet(
                 value = institution,
                 onValueChange = { institution = it },
                 label = { Text("Institution / College (Optional)") },
-                placeholder = { Text("e.g., Sarat Chandra Chattopadhyay Medical College") },
+                placeholder = { Text("e.g., Medical College") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Words,
@@ -235,7 +317,8 @@ fun UserProfileBottomSheet(
                             academicRole = academicRole.trim().ifEmpty { "Medical Student" },
                             targetExamOrSubject = targetExamOrSubject.trim().ifEmpty { "MBBS 1st Year" },
                             institution = institution.trim(),
-                            dailyPageGoal = parsedGoal
+                            dailyPageGoal = parsedGoal,
+                            selectedProf = selectedProf
                         )
                         coroutineScope.launch {
                             onSaveProfile(updated)

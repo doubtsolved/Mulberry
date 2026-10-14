@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +42,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -204,11 +208,20 @@ fun SinglePagePdfViewer(
         }
     }
 
+    var initErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(totalPages) {
+        if (totalPages > pageCount) {
+            pageCount = totalPages
+        }
+    }
+
     // Open native PdfRenderer from File or Content Uri
     DisposableEffect(pdfFile, pdfUri) {
         var pfd: ParcelFileDescriptor? = null
         var renderer: PdfRenderer? = null
         try {
+            initErrorMessage = null
             pfd = when {
                 pdfFile != null && pdfFile.exists() -> {
                     ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -222,9 +235,12 @@ fun SinglePagePdfViewer(
                 renderer = PdfRenderer(pfd)
                 pdfRenderer = renderer
                 pageCount = renderer.pageCount.coerceAtLeast(1)
+            } else {
+                initErrorMessage = "PDF file could not be opened on device."
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            initErrorMessage = "Unable to read document: ${t.message ?: "Format error"}"
         }
 
         onDispose {
@@ -266,7 +282,32 @@ fun SinglePagePdfViewer(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        if (pdfRenderer == null) {
+        if (initErrorMessage != null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(28.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Dismiss24Regular,
+                        contentDescription = null,
+                        tint = colors.accentDanger,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = initErrorMessage ?: "Document Error",
+                        fontFamily = InterFamily,
+                        fontSize = 14.sp,
+                        color = colors.textPrimary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else if (pdfRenderer == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -529,17 +570,22 @@ private fun SinglePdfPageItem(
         val containerWidthPx = with(density) { maxWidth.toPx() }.toInt().coerceAtLeast(1)
         val containerHeightPx = with(density) { maxHeight.toPx() }.toInt().coerceAtLeast(1)
 
+        var renderError by remember(pageIndex) { mutableStateOf<String?>(null) }
+        var retryTrigger by remember(pageIndex) { mutableIntStateOf(0) }
+
         // Asynchronously render page bitmap on Dispatchers.IO
-        LaunchedEffect(pageIndex, renderer) {
+        LaunchedEffect(pageIndex, renderer, retryTrigger) {
             if (renderer == null) return@LaunchedEffect
             val cached = pageCache.get(pageIndex)
             if (cached != null) {
                 bitmap = cached
                 isLoading = false
+                renderError = null
                 return@LaunchedEffect
             }
 
             isLoading = true
+            renderError = null
             withContext(Dispatchers.IO) {
                 try {
                     val renderedBitmap = rendererMutex.withLock {
@@ -568,11 +614,13 @@ private fun SinglePdfPageItem(
                     withContext(Dispatchers.Main) {
                         bitmap = renderedBitmap
                         isLoading = false
+                        renderError = null
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     withContext(Dispatchers.Main) {
                         isLoading = false
+                        renderError = e.message ?: "Failed to render page"
                     }
                 }
             }
@@ -759,6 +807,48 @@ private fun SinglePdfPageItem(
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(32.dp)
                 )
+            }
+        }
+
+        if (renderError != null && bitmap == null && !isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Dismiss24Regular,
+                        contentDescription = null,
+                        tint = colors.accentDanger,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Page ${pageIndex + 1} could not be rendered",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = colors.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = renderError ?: "Error processing page",
+                        fontFamily = InterFamily,
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { retryTrigger++ },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                    ) {
+                        Text("Retry Page", color = colors.onPrimary, fontSize = 12.sp)
+                    }
+                }
             }
         }
     }

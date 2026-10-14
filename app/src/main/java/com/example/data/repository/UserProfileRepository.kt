@@ -36,6 +36,7 @@ class UserProfileRepository(private val context: Context) {
         private const val KEY_TARGET_EXAM_OR_SUBJECT = "target_exam_or_subject"
         private const val KEY_INSTITUTION = "institution"
         private const val KEY_DAILY_PAGE_GOAL = "daily_page_goal"
+        private const val KEY_SELECTED_PROF = "selected_prof"
 
         @Volatile
         private var instance: UserProfileRepository? = null
@@ -55,7 +56,8 @@ class UserProfileRepository(private val context: Context) {
             academicRole = prefs.getString(KEY_ACADEMIC_ROLE, "Medical Student") ?: "Medical Student",
             targetExamOrSubject = prefs.getString(KEY_TARGET_EXAM_OR_SUBJECT, "MBBS 1st Year") ?: "MBBS 1st Year",
             institution = prefs.getString(KEY_INSTITUTION, "") ?: "",
-            dailyPageGoal = prefs.getInt(KEY_DAILY_PAGE_GOAL, 20).coerceAtLeast(1)
+            dailyPageGoal = prefs.getInt(KEY_DAILY_PAGE_GOAL, 20).coerceAtLeast(1),
+            selectedProf = prefs.getString(KEY_SELECTED_PROF, "1st Prof") ?: "1st Prof"
         )
     }
 
@@ -105,6 +107,7 @@ class UserProfileRepository(private val context: Context) {
             .putString(KEY_TARGET_EXAM_OR_SUBJECT, profile.targetExamOrSubject.trim().ifEmpty { "MBBS 1st Year" })
             .putString(KEY_INSTITUTION, profile.institution.trim())
             .putInt(KEY_DAILY_PAGE_GOAL, profile.dailyPageGoal.coerceAtLeast(1))
+            .putString(KEY_SELECTED_PROF, profile.selectedProf.ifEmpty { "1st Prof" })
             .apply()
     }
 
@@ -119,20 +122,8 @@ class UserProfileRepository(private val context: Context) {
             }
 
             val targetFile = File(metadataDir, "user_profile.json")
-            val atomicFile = AtomicFile(targetFile)
-            var fos: FileOutputStream? = null
             val jsonContent = gson.toJson(profile)
-
-            try {
-                fos = atomicFile.startWrite()
-                fos.write(jsonContent.toByteArray(Charsets.UTF_8))
-                atomicFile.finishWrite(fos)
-            } catch (e: Exception) {
-                if (fos != null) {
-                    atomicFile.failWrite(fos)
-                }
-                e.printStackTrace()
-            }
+            com.example.util.SafeFileWriter.writeAtomically(targetFile, jsonContent)
         } catch (e: Exception) {
             e.printStackTrace()
         }

@@ -16,31 +16,67 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.R
 import com.example.data.MulberryDatabase
 import com.example.data.repository.VaultMetadataManager
+import com.example.ui.components.FluentIcons
+import com.example.ui.theme.InterFamily
+import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.MulberryTheme
+import com.example.ui.theme.PoppinsFamily
 import com.example.ui.theme.ThemeMode
+import android.graphics.pdf.PdfRenderer
+import android.util.Log
 import com.shockwave.pdfium.PdfDocument
 import com.shockwave.pdfium.PdfiumCore
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+
+sealed interface ReaderLoadState {
+    data object Loading : ReaderLoadState
+    data object Ready : ReaderLoadState
+    data class Error(val message: String) : ReaderLoadState
+}
 
 class ReaderActivity : AppCompatActivity() {
 
@@ -78,6 +114,9 @@ class ReaderActivity : AppCompatActivity() {
     private var sessionStartPage: Int = -1
     private var maxPageReached: Int = 1
 
+    private val readerLoadState = mutableStateOf<ReaderLoadState>(ReaderLoadState.Loading)
+    private var prepareJob: Job? = null
+
     // Single-Page Reader Page States
     private val currentSinglePage = mutableIntStateOf(0)
     private val singlePageTargetJump = mutableIntStateOf(-1)
@@ -93,9 +132,11 @@ class ReaderActivity : AppCompatActivity() {
     private val activeSearchMatchIndexState = mutableIntStateOf(-1)
 
     private var activeTheme: ThemeMode = ThemeMode.LIGHT
+    private var ephemeralPdfFile: File? = null
+    private var activeRenderingPath: String = ""
 
-    private lateinit var thumbnailManager: PdfThumbnailManager
-    private lateinit var searchManager: PdfTextSearchManager
+    private var thumbnailManager: PdfThumbnailManager? = null
+    private var searchManager: PdfTextSearchManager? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,14 +144,12 @@ class ReaderActivity : AppCompatActivity() {
         // Enable edge-to-edge layout for sleek immersive bar transitions
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Read active theme from SharedPreferences
         val prefs = getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
         val savedTheme = prefs.getString("theme_mode", ThemeMode.PAPER.name)
         activeTheme = ThemeMode.from(savedTheme)
 
         setContentView(R.layout.activity_reader)
 
-        // Set root container background to match the active theme palette
         val palette = when (activeTheme) {
             ThemeMode.OLDED -> com.example.ui.theme.MulberryOldedPalette
             ThemeMode.PAPER, ThemeMode.LIGHT -> com.example.ui.theme.MulberryPaperPalette
@@ -134,35 +173,6 @@ class ReaderActivity : AppCompatActivity() {
             maxPageReached = sessionStartPage
         }
 
-        thumbnailManager = PdfThumbnailManager(applicationContext, bookPath)
-        searchManager = PdfTextSearchManager(applicationContext, bookPath, totalPagesState.intValue)
-
-        // Restore last read page from database only if not launching a specific study session
-        if (sessionStartPage <= 0) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val db = MulberryDatabase.getInstance(applicationContext)
-                    val book = if (bookId != -1) {
-                        db.bookDao().getBookById(bookId)
-                    } else {
-                        db.bookDao().getAllBooksSync().find { it.uriString == bookPath }
-                    }
-                    if (book != null && book.lastReadPage > 0) {
-                        withContext(Dispatchers.Main) {
-                            val zeroIdx = (book.lastReadPage - 1).coerceAtLeast(0)
-                            currentSinglePage.intValue = zeroIdx
-                            singlePageTargetJump.intValue = zeroIdx
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-
-        // Setup unified Compose TopAppBar, thumbnail broad view, and floating search
-        setupComposeTopBar()
-
         // Hook system back gesture
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -171,11 +181,208 @@ class ReaderActivity : AppCompatActivity() {
             }
         })
 
-        // Extract true total page count & TOC via background PdfiumCore
-        extractPdfMetadataAndToc()
-
-        // Setup Compose Single-Page Pager Viewport
+        // Setup Compose Single-Page Viewport & Loading Overlay
         setupSinglePageView()
+
+        // Asynchronously prepare book (decryption, path resolution, metadata)
+        startAsyncPreparation()
+    }
+
+    private fun startAsyncPreparation() {
+        prepareJob?.cancel()
+        readerLoadState.value = ReaderLoadState.Loading
+
+        prepareJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                var resolvedPath = bookPath.trim()
+
+                // 1. Resolve path from Mulberry storage (/sdcard/Mulberry/), tracking JSON, or Room DB
+                val mulberryDir = com.example.util.MulberryStorageManager.getMulberryDirectory(applicationContext)
+                val vaultDir = File(filesDir, "vault")
+
+                if (resolvedPath.isEmpty() || (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())) {
+                    val db = MulberryDatabase.getInstance(applicationContext)
+                    val bookEntity = if (bookId != -1) {
+                        db.bookDao().getBookById(bookId)
+                    } else if (bookTitle.isNotBlank()) {
+                        db.bookDao().getAllBooksSync().find { it.title.equals(bookTitle, ignoreCase = true) }
+                    } else null
+
+                    if (bookEntity != null) {
+                        if (bookTitle.isEmpty()) {
+                            bookTitle = bookEntity.title
+                        }
+                        if (bookEntity.binFilePath.isNotBlank() && File(bookEntity.binFilePath).exists()) {
+                            resolvedPath = bookEntity.binFilePath
+                        } else if (bookEntity.slug.isNotBlank()) {
+                            val mulberryBin = com.example.util.MulberryStorageManager.getBinFileForBook(applicationContext, bookEntity.slug)
+                            if (mulberryBin.exists()) {
+                                resolvedPath = mulberryBin.absolutePath
+                            } else {
+                                val directVaultFile = File(vaultDir, "${bookEntity.slug}.bin")
+                                if (directVaultFile.exists()) {
+                                    resolvedPath = directVaultFile.absolutePath
+                                }
+                            }
+                        } else if (bookEntity.uriString.isNotBlank() && (bookEntity.uriString.startsWith("content://") || File(bookEntity.uriString).exists())) {
+                            resolvedPath = bookEntity.uriString
+                        }
+                    }
+                }
+
+                // Check /sdcard/Mulberry/downloaded_books.json index
+                if (resolvedPath.isEmpty() || (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())) {
+                    val index = com.example.util.MulberryStorageManager.loadTrackingIndex(applicationContext)
+                    val match = index.books.firstOrNull {
+                        (bookId != -1 && it.id == "book_$bookId") ||
+                        (bookTitle.isNotBlank() && it.title.equals(bookTitle, ignoreCase = true)) ||
+                        (bookTitle.isNotBlank() && it.id.contains(bookTitle.take(6).lowercase()))
+                    }
+                    if (match != null && File(match.localPath).exists()) {
+                        resolvedPath = match.localPath
+                    }
+                }
+
+                // Check /sdcard/Mulberry/ directly for matching files
+                if (resolvedPath.isEmpty() || (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())) {
+                    if (mulberryDir.exists()) {
+                        val normalizedTitle = bookTitle.lowercase().replace(" ", "_").replace("'", "")
+                        val matchingFile = mulberryDir.listFiles()?.firstOrNull { file ->
+                            file.isFile && file.name.endsWith(".bin") && (
+                                (bookId != -1 && file.name.contains("book_$bookId")) ||
+                                (bookTitle.isNotBlank() && (
+                                    file.name.contains(normalizedTitle.take(8)) ||
+                                    normalizedTitle.contains(file.nameWithoutExtension.take(8))
+                                ))
+                            )
+                        }
+                        if (matchingFile != null) {
+                            resolvedPath = matchingFile.absolutePath
+                        }
+                    }
+                }
+
+                // Legacy fallback: check filesDir/vault
+                if (resolvedPath.isEmpty() || (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())) {
+                    if (vaultDir.exists()) {
+                        val normalizedTitle = bookTitle.lowercase().replace(" ", "_").replace("'", "")
+                        val matchingFile = vaultDir.listFiles()?.firstOrNull { file ->
+                            file.isFile && (
+                                (bookId != -1 && file.name.contains("book_$bookId")) ||
+                                (bookTitle.isNotBlank() && (
+                                    file.name.contains(normalizedTitle.take(8)) ||
+                                    normalizedTitle.contains(file.nameWithoutExtension.take(8))
+                                ))
+                            )
+                        }
+                        if (matchingFile != null) {
+                            resolvedPath = matchingFile.absolutePath
+                        }
+                    }
+                }
+
+                if (resolvedPath.isEmpty() || (!resolvedPath.startsWith("content://") && !File(resolvedPath).exists())) {
+                    withContext(Dispatchers.Main) {
+                        readerLoadState.value = ReaderLoadState.Error("Textbook file not found on device.")
+                    }
+                    return@launch
+                }
+
+                bookPath = resolvedPath
+
+                // 2. Ephemeral Decryption for encrypted .bin Vault books
+                var targetPdfPath = resolvedPath
+                if (resolvedPath.endsWith(".bin", ignoreCase = true) || File(resolvedPath).name.endsWith(".bin")) {
+                    val sourceFile = File(resolvedPath)
+                    if (sourceFile.exists()) {
+                        val sessionFile = com.example.util.VaultCryptoManager.createEphemeralSessionFile(
+                            applicationContext,
+                            if (bookId != -1) bookId.toString() else "vault"
+                        )
+                        val success = com.example.util.VaultCryptoManager.decryptVaultFile(sourceFile, sessionFile)
+                        if (success && sessionFile.exists() && sessionFile.length() > 0) {
+                            ephemeralPdfFile = sessionFile
+                            targetPdfPath = sessionFile.absolutePath
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                readerLoadState.value = ReaderLoadState.Error("Failed to decrypt secure vault payload.")
+                            }
+                            return@launch
+                        }
+                    }
+                }
+
+                activeRenderingPath = targetPdfPath
+
+                // 3. Open native PdfRenderer directly to validate document and get exact pageCount immediately (<10ms)
+                var detectedPageCount = 1
+                try {
+                    val testPfd = if (targetPdfPath.startsWith("content://")) {
+                        contentResolver.openFileDescriptor(Uri.parse(targetPdfPath), "r")
+                    } else {
+                        val f = File(targetPdfPath)
+                        if (f.exists()) ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY) else null
+                    }
+
+                    if (testPfd != null) {
+                        val testRenderer = PdfRenderer(testPfd)
+                        detectedPageCount = testRenderer.pageCount.coerceAtLeast(1)
+                        testRenderer.close()
+                        testPfd.close()
+                    } else {
+                        throw IllegalStateException("File descriptor could not be acquired")
+                    }
+                } catch (t: Throwable) {
+                    Log.e("ReaderActivity", "Cannot open PDF with PdfRenderer: ${t.message}", t)
+                    withContext(Dispatchers.Main) {
+                        readerLoadState.value = ReaderLoadState.Error("Corrupted or inaccessible document: ${t.message ?: "Format error"}")
+                    }
+                    return@launch
+                }
+
+                // 4. Initialize thumbnail and search managers
+                val tManager = PdfThumbnailManager(applicationContext, activeRenderingPath)
+                val sManager = PdfTextSearchManager(applicationContext, activeRenderingPath, detectedPageCount)
+                thumbnailManager = tManager
+                searchManager = sManager
+
+                // Restore last read page from database only if not launching a specific study session
+                if (sessionStartPage <= 0) {
+                    try {
+                        val db = MulberryDatabase.getInstance(applicationContext)
+                        val book = if (bookId != -1) {
+                            db.bookDao().getBookById(bookId)
+                        } else {
+                            db.bookDao().getAllBooksSync().find { it.uriString == bookPath || it.binFilePath == bookPath }
+                        }
+                        if (book != null && book.lastReadPage > 0) {
+                            withContext(Dispatchers.Main) {
+                                val zeroIdx = (book.lastReadPage - 1).coerceIn(0, detectedPageCount - 1)
+                                currentSinglePage.intValue = zeroIdx
+                                singlePageTargetJump.intValue = zeroIdx
+                            }
+                        }
+                    } catch (_: Throwable) {}
+                }
+
+                // 5. Instantly mark reader ready so page 1 renders without delay!
+                withContext(Dispatchers.Main) {
+                    totalPagesState.intValue = detectedPageCount
+                    readerLoadState.value = ReaderLoadState.Ready
+                    setupComposeTopBar()
+                }
+
+                // 6. Asynchronously extract Table of Contents in background without blocking reader view
+                lifecycleScope.launch(Dispatchers.IO) {
+                    extractPdfMetadataAndTocSafely()
+                }
+            } catch (t: Throwable) {
+                Log.e("ReaderActivity", "Preparation error: ${t.message}", t)
+                withContext(Dispatchers.Main) {
+                    readerLoadState.value = ReaderLoadState.Error(t.message ?: "An unexpected error occurred.")
+                }
+            }
+        }
     }
 
     private fun setupComposeTopBar() {
@@ -183,55 +390,59 @@ class ReaderActivity : AppCompatActivity() {
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         composeView.setContent {
             MulberryTheme(themeMode = activeTheme) {
-                AnimatedVisibility(
-                    visible = showControlsState.value,
-                    enter = slideInVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow
+                val tManager = thumbnailManager
+                val sManager = searchManager
+                if (tManager != null && sManager != null && readerLoadState.value is ReaderLoadState.Ready) {
+                    AnimatedVisibility(
+                        visible = showControlsState.value,
+                        enter = slideInVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialOffsetY = { -it }
+                        ) + fadeIn(
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
                         ),
-                        initialOffsetY = { -it }
-                    ) + fadeIn(
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                    ),
-                    exit = slideOutVertically(
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        targetOffsetY = { -it }
-                    ) + fadeOut(
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                    )
-                ) {
-                    Box(modifier = Modifier.statusBarsPadding()) {
-                        ReaderTopBarScreen(
-                            bookTitle = bookTitle,
-                            bookPath = bookPath,
-                            totalPages = totalPagesState.intValue,
-                            currentPageIndex = currentSinglePage.intValue,
-                            tocItems = tocItemsState.value,
-                            isTocLoading = isTocLoadingState.value,
-                            thumbnailManager = thumbnailManager,
-                            searchManager = searchManager,
-                            onBackClick = {
-                                saveReadingProgress()
-                                finish()
-                            },
-                            onJumpToPage = { targetPageIdx ->
-                                jumpToPage(targetPageIdx)
-                            },
-                            onOpenWith = {
-                                openWithExternalApp()
-                            },
-                            onShare = {
-                                shareDocument()
-                            },
-                            onFeedback = {
-                                sendFeedbackEmail()
-                            },
-                            onMatchesChanged = { matches, currentIdx ->
-                                searchMatchesState.value = matches
-                                activeSearchMatchIndexState.intValue = currentIdx
-                            }
+                        exit = slideOutVertically(
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            targetOffsetY = { -it }
+                        ) + fadeOut(
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
                         )
+                    ) {
+                        Box(modifier = Modifier.statusBarsPadding()) {
+                            ReaderTopBarScreen(
+                                bookTitle = bookTitle,
+                                bookPath = bookPath,
+                                totalPages = totalPagesState.intValue,
+                                currentPageIndex = currentSinglePage.intValue,
+                                tocItems = tocItemsState.value,
+                                isTocLoading = isTocLoadingState.value,
+                                thumbnailManager = tManager,
+                                searchManager = sManager,
+                                onBackClick = {
+                                    saveReadingProgress()
+                                    finish()
+                                },
+                                onJumpToPage = { targetPageIdx ->
+                                    jumpToPage(targetPageIdx)
+                                },
+                                onOpenWith = {
+                                    openWithExternalApp()
+                                },
+                                onShare = {
+                                    shareDocument()
+                                },
+                                onFeedback = {
+                                    sendFeedbackEmail()
+                                },
+                                onMatchesChanged = { matches, currentIdx ->
+                                    searchMatchesState.value = matches
+                                    activeSearchMatchIndexState.intValue = currentIdx
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -243,27 +454,156 @@ class ReaderActivity : AppCompatActivity() {
         singlePageComposeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         singlePageComposeView.setContent {
             MulberryTheme(themeMode = activeTheme) {
-                val docFile = if (!bookPath.startsWith("content://")) File(bookPath).takeIf { it.exists() } else null
-                val docUri = if (bookPath.startsWith("content://")) Uri.parse(bookPath) else null
+                val colors = LocalMulberryColors.current
+                when (val state = readerLoadState.value) {
+                    is ReaderLoadState.Loading -> {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = colors.background
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .statusBarsPadding()
+                                    .navigationBarsPadding(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(32.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = colors.primary,
+                                        strokeWidth = 3.dp,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(32.dp))
+                                    Text(
+                                        text = "Preparing Medical Textbook",
+                                        fontFamily = PoppinsFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 18.sp,
+                                        color = colors.textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = bookTitle.ifEmpty { "Medical Vault Textbook" },
+                                        fontFamily = InterFamily,
+                                        fontWeight = FontWeight.Normal,
+                                        fontSize = 14.sp,
+                                        color = colors.textSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(48.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            prepareJob?.cancel()
+                                            finish()
+                                        },
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, colors.borderSubtle),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary)
+                                    ) {
+                                        Icon(
+                                            imageVector = FluentIcons.Dismiss24Regular,
+                                            contentDescription = "Cancel",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = colors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Cancel",
+                                            fontFamily = InterFamily,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = colors.textPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is ReaderLoadState.Error -> {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = colors.background
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .statusBarsPadding()
+                                    .navigationBarsPadding(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = FluentIcons.Dismiss24Regular,
+                                        contentDescription = null,
+                                        tint = colors.accentDanger,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(20.dp))
+                                    Text(
+                                        text = "Unable to Open Book",
+                                        fontFamily = PoppinsFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 18.sp,
+                                        color = colors.textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = state.message,
+                                        fontFamily = InterFamily,
+                                        fontSize = 14.sp,
+                                        color = colors.textSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(32.dp))
+                                    Button(
+                                        onClick = { finish() },
+                                        shape = RoundedCornerShape(20.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                                    ) {
+                                        Text(
+                                            text = "Close",
+                                            fontFamily = InterFamily,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.onPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is ReaderLoadState.Ready -> {
+                        val targetPath = activeRenderingPath.ifEmpty { bookPath }
+                        val docFile = if (!targetPath.startsWith("content://")) File(targetPath).takeIf { it.exists() } else null
+                        val docUri = if (targetPath.startsWith("content://")) Uri.parse(targetPath) else null
 
-                SinglePagePdfViewer(
-                    pdfFile = docFile,
-                    pdfUri = docUri,
-                    initialPage = currentSinglePage.intValue,
-                    totalPages = totalPagesState.intValue,
-                    targetPageJump = singlePageTargetJump.intValue,
-                    searchMatches = searchMatchesState.value,
-                    activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
-                    onPageChanged = { pageIndex ->
-                        currentSinglePage.intValue = pageIndex
-                        maxPageReached = maxOf(maxPageReached, pageIndex + 1)
-                    },
-                    themeMode = activeTheme,
-                    onToggleControls = { visible ->
-                        toggleReaderControls(visible)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                        SinglePagePdfViewer(
+                            pdfFile = docFile,
+                            pdfUri = docUri,
+                            initialPage = currentSinglePage.intValue,
+                            totalPages = totalPagesState.intValue,
+                            targetPageJump = singlePageTargetJump.intValue,
+                            searchMatches = searchMatchesState.value,
+                            activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
+                            onPageChanged = { pageIndex ->
+                                currentSinglePage.intValue = pageIndex
+                                maxPageReached = maxOf(maxPageReached, pageIndex + 1)
+                            },
+                            themeMode = activeTheme,
+                            onToggleControls = { visible ->
+                                toggleReaderControls(visible)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
             }
         }
     }
@@ -287,71 +627,79 @@ class ReaderActivity : AppCompatActivity() {
         singlePageTargetJump.intValue = safeIndex
     }
 
-    private fun extractPdfMetadataAndToc() {
-        CoroutineScope(Dispatchers.IO).launch {
-            val pfd: ParcelFileDescriptor? = try {
-                if (bookPath.startsWith("content://")) {
-                    contentResolver.openFileDescriptor(Uri.parse(bookPath), "r")
+    private suspend fun extractPdfMetadataAndTocSafely() {
+        val targetPath = activeRenderingPath.ifEmpty { bookPath }
+        withTimeoutOrNull(4000L) {
+            try {
+                val pfd: ParcelFileDescriptor? = if (targetPath.startsWith("content://")) {
+                    contentResolver.openFileDescriptor(Uri.parse(targetPath), "r")
                 } else {
-                    val file = File(bookPath)
+                    val file = File(targetPath)
                     if (file.exists()) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) else null
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
 
-            if (pfd != null) {
-                var pdfiumCore: PdfiumCore? = null
-                var pdfDoc: PdfDocument? = null
-                try {
-                    pdfiumCore = PdfiumCore(applicationContext)
-                    pdfDoc = pdfiumCore.newDocument(pfd)
+                if (pfd != null) {
+                    var pdfiumCore: PdfiumCore? = null
+                    var pdfDoc: PdfDocument? = null
+                    try {
+                        pdfiumCore = PdfiumCore(applicationContext)
+                        pdfDoc = pdfiumCore.newDocument(pfd)
 
-                    val realPageCount = pdfiumCore.getPageCount(pdfDoc)
-                    if (realPageCount > 0) {
+                        // Extract Table of Contents
+                        val bookmarks = pdfiumCore.getTableOfContents(pdfDoc)
+                        val visited = mutableSetOf<String>()
+                        val parsed = parseBookmarksRecursively(bookmarks, visited, 0)
                         withContext(Dispatchers.Main) {
-                            totalPagesState.intValue = realPageCount
-                            searchManager = PdfTextSearchManager(applicationContext, bookPath, realPageCount)
+                            tocItemsState.value = parsed
+                            isTocLoadingState.value = false
                         }
+                    } catch (t: Throwable) {
+                        Log.w("ReaderActivity", "TOC extraction non-fatal warning: ${t.message}")
+                        withContext(Dispatchers.Main) {
+                            isTocLoadingState.value = false
+                        }
+                    } finally {
+                        try {
+                            if (pdfDoc != null && pdfiumCore != null) {
+                                pdfiumCore.closeDocument(pdfDoc)
+                            }
+                        } catch (_: Throwable) {}
+                        try {
+                            pfd.close()
+                        } catch (_: Throwable) {}
                     }
-
-                    // Extract Table of Contents
-                    val bookmarks = pdfiumCore.getTableOfContents(pdfDoc)
-                    val parsed = parseBookmarksRecursively(bookmarks)
+                } else {
                     withContext(Dispatchers.Main) {
-                        tocItemsState.value = parsed
                         isTocLoadingState.value = false
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    withContext(Dispatchers.Main) {
-                        isTocLoadingState.value = false
-                    }
-                } finally {
-                    try {
-                        if (pdfDoc != null && pdfiumCore != null) {
-                            pdfiumCore.closeDocument(pdfDoc)
-                        }
-                    } catch (_: Exception) {}
-                    try {
-                        pfd.close()
-                    } catch (_: Exception) {}
                 }
-            } else {
+            } catch (t: Throwable) {
+                Log.w("ReaderActivity", "Background TOC load failed: ${t.message}")
                 withContext(Dispatchers.Main) {
                     isTocLoadingState.value = false
                 }
             }
+        } ?: run {
+            Log.w("ReaderActivity", "TOC extraction timed out; proceeding without bookmarks")
+            withContext(Dispatchers.Main) {
+                isTocLoadingState.value = false
+            }
         }
     }
 
-    private fun parseBookmarksRecursively(list: List<PdfDocument.Bookmark>?): List<TocItem> {
-        if (list.isNullOrEmpty()) return emptyList()
-        return list.map { b ->
-            val title = b.title?.takeIf { it.isNotBlank() } ?: "Untitled Section"
+    private fun parseBookmarksRecursively(
+        list: List<PdfDocument.Bookmark>?,
+        visited: MutableSet<String>,
+        depth: Int
+    ): List<TocItem> {
+        if (list.isNullOrEmpty() || depth > 8) return emptyList()
+        return list.mapNotNull { b ->
+            val title = b.title?.takeIf { it.isNotBlank() } ?: "Section"
+            val key = "${b.pageIdx}_$title"
+            if (!visited.add(key)) return@mapNotNull null
+
             val children = if (b.hasChildren() && b.children != null) {
-                parseBookmarksRecursively(b.children)
+                parseBookmarksRecursively(b.children, visited, depth + 1)
             } else {
                 emptyList()
             }
@@ -364,10 +712,11 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun getDocumentUri(): Uri? {
-        return if (bookPath.startsWith("content://")) {
-            Uri.parse(bookPath)
+        val targetPath = activeRenderingPath.ifEmpty { bookPath }
+        return if (targetPath.startsWith("content://")) {
+            Uri.parse(targetPath)
         } else {
-            val file = File(bookPath)
+            val file = File(targetPath)
             if (file.exists()) {
                 try {
                     FileProvider.getUriForFile(this, "$packageName.provider", file)
@@ -437,7 +786,7 @@ class ReaderActivity : AppCompatActivity() {
         val currentPage = (currentSinglePage.intValue + 1).coerceIn(1, totalPages)
         val progressPercent = ((currentPage.toFloat() / totalPages.toFloat()) * 100f).coerceIn(0f, 100f)
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val db = MulberryDatabase.getInstance(applicationContext)
                 val bookDao = db.bookDao()
@@ -507,7 +856,11 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        thumbnailManager.clearMemory()
+        prepareJob?.cancel()
+        thumbnailManager?.clearMemory()
+        ephemeralPdfFile?.let {
+            com.example.util.VaultCryptoManager.purgeEphemeralSession(it)
+        }
         super.onDestroy()
     }
 
