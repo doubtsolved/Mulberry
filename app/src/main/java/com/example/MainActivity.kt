@@ -40,7 +40,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.platform.LocalConfiguration
 import com.example.ui.navigation.MulberryBottomNavBar
+import com.example.ui.navigation.MulberryNavigationRail
 import com.example.ui.navigation.MulberryTab
 import com.example.ui.screens.AgendaScreen
 import com.example.ui.reader.ReaderActivity
@@ -231,55 +236,108 @@ fun MulberryApp(viewModel: MulberryViewModel) {
             }
     }
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
+
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            bottomBar = {
-                if (showBottomBar) {
-                    MulberryBottomNavBar(
-                        selectedTab = currentTab,
-                        onTabSelected = { tab ->
-                            viewModel.setTab(tab)
-                            val targetIndex = visibleTabs.indexOf(tab)
-                            if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
-                                coroutineScope.launch {
-                                    pagerState.scrollToPage(targetIndex)
-                                }
+        if (isWideScreen && showBottomBar) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                MulberryNavigationRail(
+                    selectedTab = currentTab,
+                    onTabSelected = { tab ->
+                        viewModel.setTab(tab)
+                        val targetIndex = visibleTabs.indexOf(tab)
+                        if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
+                            coroutineScope.launch {
+                                pagerState.scrollToPage(targetIndex)
                             }
-                        },
-                        tabs = visibleTabs,
-                        onTabLongClick = { viewModel.openCustomizeTabsSheet() }
-                    )
+                        }
+                    },
+                    tabs = visibleTabs,
+                    onTabLongClick = { viewModel.openCustomizeTabsSheet() }
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1
+                    ) { pageIndex ->
+                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
+                        when (tab) {
+                            MulberryTab.LIBRARY -> LibraryScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.SNIPS -> SnipsScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.DESK -> DeskRootScreen(
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.SETTINGS -> SettingsScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
             }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
-                ) { pageIndex ->
-                    val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
-                    when (tab) {
-                        MulberryTab.LIBRARY -> LibraryScreen(
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxSize()
+        } else {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                bottomBar = {
+                    if (showBottomBar) {
+                        MulberryBottomNavBar(
+                            selectedTab = currentTab,
+                            onTabSelected = { tab ->
+                                viewModel.setTab(tab)
+                                val targetIndex = visibleTabs.indexOf(tab)
+                                if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
+                                    coroutineScope.launch {
+                                        pagerState.scrollToPage(targetIndex)
+                                    }
+                                }
+                            },
+                            tabs = visibleTabs,
+                            onTabLongClick = { viewModel.openCustomizeTabsSheet() }
                         )
-                        MulberryTab.SNIPS -> SnipsScreen(
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        MulberryTab.DESK -> DeskRootScreen(
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        MulberryTab.SETTINGS -> SettingsScreen(
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    }
+                }
+            ) { innerPadding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
+                ) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1
+                    ) { pageIndex ->
+                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
+                        when (tab) {
+                            MulberryTab.LIBRARY -> LibraryScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.SNIPS -> SnipsScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.DESK -> DeskRootScreen(
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            MulberryTab.SETTINGS -> SettingsScreen(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }

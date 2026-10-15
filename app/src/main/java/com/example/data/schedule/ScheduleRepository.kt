@@ -35,7 +35,8 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
     companion object {
         private const val TAG = "ScheduleRepository"
-        private const val SCHEDULE_DIR_NAME = ".mulberry"
+        private const val SCHEDULE_DIR_NAME = ".schedule"
+        private const val LEGACY_SCHEDULE_DIR_NAME = ".mulberry"
         private const val SCHEDULE_FILE_NAME = "schedule.json"
         private const val BACKUP_FILE_NAME = "schedule.json.bak"
         private const val TMP_FILE_NAME = "schedule.json.tmp"
@@ -132,17 +133,24 @@ class ScheduleRepository private constructor(private val appContext: Context) {
     val scheduleState: StateFlow<ScheduleVaultFile> = _scheduleState.asStateFlow()
 
     init {
-        // Auto-discover initial active vault from shared preferences
+        // Auto-discover initial active vault or fallback to /sdcard/Mulberry/
         val prefs = appContext.getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
         val savedVaultPath = prefs.getString("active_vault_path", null)
-        if (!savedVaultPath.isNullOrBlank()) {
-            setActiveVaultPath(savedVaultPath)
+        val defaultRoot = if (!savedVaultPath.isNullOrBlank()) {
+            savedVaultPath
+        } else {
+            com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
         }
+        setActiveVaultPath(defaultRoot)
     }
 
     fun setActiveVaultPath(vaultPath: String?) {
-        if (vaultPath.isNullOrBlank()) return
-        if (activeVaultPath == vaultPath) return
+        val effectivePath = if (vaultPath.isNullOrBlank()) {
+            com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
+        } else {
+            vaultPath
+        }
+        if (activeVaultPath == effectivePath) return
 
         loadJob?.cancel()
 
@@ -523,16 +531,26 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
     private fun getScheduleFile(root: String): File {
         val dir = File(root, SCHEDULE_DIR_NAME)
-        return File(dir, SCHEDULE_FILE_NAME)
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, SCHEDULE_FILE_NAME)
+        if (!file.exists()) {
+            val legacy = File(File(root, LEGACY_SCHEDULE_DIR_NAME), SCHEDULE_FILE_NAME)
+            if (legacy.exists()) {
+                runCatching { legacy.copyTo(file, overwrite = true) }
+            }
+        }
+        return file
     }
 
     private fun getBackupFile(root: String): File {
         val dir = File(root, SCHEDULE_DIR_NAME)
+        if (!dir.exists()) dir.mkdirs()
         return File(dir, BACKUP_FILE_NAME)
     }
 
     private fun getTmpFile(root: String): File {
         val dir = File(root, SCHEDULE_DIR_NAME)
+        if (!dir.exists()) dir.mkdirs()
         return File(dir, TMP_FILE_NAME)
     }
 }

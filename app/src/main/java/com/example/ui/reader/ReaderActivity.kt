@@ -1,10 +1,14 @@
 package com.example.ui.reader
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import androidx.core.app.ActivityOptionsCompat
+import com.example.R
 import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -52,7 +56,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
-import com.example.R
 import com.example.data.MulberryDatabase
 import com.example.data.repository.VaultMetadataManager
 import com.example.ui.components.FluentIcons
@@ -93,7 +96,17 @@ class ReaderActivity : AppCompatActivity() {
                 putExtra(EXTRA_BOOK_TITLE, bookTitle)
                 putExtra(EXTRA_BOOK_ID, bookId)
             }
-            context.startActivity(intent)
+            if (context is Activity) {
+                val options = ActivityOptionsCompat.makeCustomAnimation(
+                    context,
+                    R.anim.book_open_enter,
+                    R.anim.book_open_exit
+                )
+                context.startActivity(intent, options.toBundle())
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            }
         }
 
         fun launchSession(context: Context, bookPath: String, bookTitle: String, startPage: Int, sessionId: String) {
@@ -103,7 +116,17 @@ class ReaderActivity : AppCompatActivity() {
                 putExtra(EXTRA_START_PAGE, startPage)
                 putExtra(EXTRA_SESSION_ID, sessionId)
             }
-            context.startActivity(intent)
+            if (context is Activity) {
+                val options = ActivityOptionsCompat.makeCustomAnimation(
+                    context,
+                    R.anim.book_open_enter,
+                    R.anim.book_open_exit
+                )
+                context.startActivity(intent, options.toBundle())
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            }
         }
     }
 
@@ -826,6 +849,14 @@ class ReaderActivity : AppCompatActivity() {
                                 context = applicationContext
                             )
                         }
+                        // Also record telemetry to /sdcard/Mulberry/.schedule/reading_progress.json
+                        runCatching {
+                            com.example.util.MulberryStorageManager.recordReadingProgress(
+                                context = applicationContext,
+                                book = book,
+                                newLastReadPage = currentPage
+                            )
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -868,5 +899,22 @@ class ReaderActivity : AppCompatActivity() {
     override fun onBackPressed() {
         saveReadingProgress()
         super.onBackPressed()
+    }
+
+    override fun finish() {
+        super.finish()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(
+                Activity.OVERRIDE_TRANSITION_CLOSE,
+                R.anim.book_close_enter,
+                R.anim.book_close_exit
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(
+                R.anim.book_close_enter,
+                R.anim.book_close_exit
+            )
+        }
     }
 }

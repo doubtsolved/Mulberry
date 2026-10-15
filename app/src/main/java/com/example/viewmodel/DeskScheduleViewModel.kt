@@ -23,10 +23,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
 
-class DeskScheduleViewModel(application: Application) : AndroidViewModel(application) {
+class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app) {
 
-    private val scheduleRepo = ScheduleRepository.getInstance(application)
-    private val db = MulberryDatabase.getInstance(application)
+    private val scheduleRepo = ScheduleRepository.getInstance(app)
+    private val db = MulberryDatabase.getInstance(app)
 
     val scheduleState: StateFlow<ScheduleVaultFile> = scheduleRepo.scheduleState
 
@@ -36,9 +36,15 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
     private val _vaultBooks = MutableStateFlow<List<BookEntity>>(emptyList())
     val vaultBooks: StateFlow<List<BookEntity>> = _vaultBooks.asStateFlow()
 
-    private val downloadManager = com.example.util.BookDownloadManager.getInstance(application, db.bookDao())
+    private val downloadManager = com.example.util.BookDownloadManager.getInstance(app, db.bookDao())
 
     val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val allCatalogBooks: StateFlow<List<BookEntity>> = db.bookDao().getAllBooks().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -56,13 +62,13 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
     init {
         // Synchronize physical /sdcard/Mulberry/ storage with database
         viewModelScope.launch(Dispatchers.IO) {
-            com.example.util.MulberryStorageManager.syncDiskWithDatabase(application, db.bookDao())
+            com.example.util.MulberryStorageManager.syncDiskWithDatabase(app, db.bookDao())
         }
 
         // Observe database vaults and active vault selection
         viewModelScope.launch {
             db.vaultDao().getAllVaults().collect { vaults ->
-                val prefs = application.getSharedPreferences("mulberry_prefs", android.content.Context.MODE_PRIVATE)
+                val prefs = app.getSharedPreferences("mulberry_prefs", android.content.Context.MODE_PRIVATE)
                 val activeId = prefs.getString("active_vault_id", null)
                 val current = vaults.find { it.id.toString() == activeId } ?: vaults.firstOrNull()
                 _activeVault.value = current
@@ -190,14 +196,15 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
         reminderMinutesBefore: Int,
         microNote: String
     ) {
-        val vault = _activeVault.value ?: return
-        val relPath = if (book.uriString.startsWith(vault.rootPath)) {
-            book.uriString.removePrefix(vault.rootPath).trimStart('/')
+        val vaultPath = _activeVault.value?.rootPath
+            ?: com.example.util.MulberryStorageManager.getMulberryDirectory(app).absolutePath
+        val relPath = if (book.uriString.startsWith(vaultPath)) {
+            book.uriString.removePrefix(vaultPath).trimStart('/')
         } else {
             book.fileName
         }
         val session = ReadingSession(
-            vaultPath = vault.rootPath,
+            vaultPath = vaultPath,
             bookFileName = book.fileName.ifEmpty { book.uriString },
             bookRelativePath = relPath,
             bookTitle = book.title,
@@ -209,6 +216,14 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
         )
         viewModelScope.launch {
             scheduleRepo.addSession(session)
+            // Persist progress to /sdcard/Mulberry/.schedule/reading_progress.json
+            runCatching {
+                com.example.util.MulberryStorageManager.recordReadingProgress(
+                    context = app,
+                    book = book,
+                    newLastReadPage = startPage
+                )
+            }
         }
     }
 
@@ -221,12 +236,35 @@ class DeskScheduleViewModel(application: Application) : AndroidViewModel(applica
     fun markCompleted(sessionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.markCompleted(sessionId)
+            val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
+            if (session != null) {
+                val book = downloadedBooks.value.find { it.title == session.bookTitle }
+                if (book != null) {
+                    com.example.util.MulberryStorageManager.recordReadingProgress(
+                        context = app,
+                        book = book,
+                        newLastReadPage = session.endPage
+                    )
+                }
+            }
         }
     }
 
     fun toggleCompleted(sessionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.toggleCompleted(sessionId)
+            val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
+            if (session != null) {
+                val book = downloadedBooks.value.find { it.title == session.bookTitle }
+                if (book != null) {
+                    val targetPage = if (session.isCompleted) session.endPage else session.startPage
+                    com.example.util.MulberryStorageManager.recordReadingProgress(
+                        context = app,
+                        book = book,
+                        newLastReadPage = targetPage
+                    )
+                }
+            }
         }
     }
 

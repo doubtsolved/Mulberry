@@ -6,15 +6,25 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.ui.screens.OFFICIAL_CATALOG_TYPES
+import com.example.ui.screens.matchesCatalogType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +32,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,7 +43,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -99,6 +116,7 @@ fun DeskRootScreen(
     val activeVault by deskViewModel.activeVault.collectAsState()
     val vaultBooks by deskViewModel.vaultBooks.collectAsState()
     val downloadedBooks by deskViewModel.downloadedBooks.collectAsState()
+    val allCatalogBooks by deskViewModel.allCatalogBooks.collectAsState()
     val isRefreshing by deskViewModel.isRefreshing.collectAsState()
 
     val activeTodaySessions by deskViewModel.activeTodaySessions.collectAsState()
@@ -125,11 +143,77 @@ fun DeskRootScreen(
     // Collapsible folders on The Shelf (collapsed set, default empty so all subjects are expanded)
     var collapsedFolders by remember { mutableStateOf(setOf<String>()) }
 
-    // Group downloaded books into Subject folders based on catalog metadata
-    val booksBySubject = remember(downloadedBooks) {
-        downloadedBooks
-            .groupBy { it.subject.ifBlank { "General" }.trim() }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+    // Subject filter chip state for Shelf
+    var selectedSubject by remember { mutableStateOf("All") }
+
+    // Dynamic list of subjects from downloaded books
+    val availableSubjects = remember(downloadedBooks) {
+        val list = mutableListOf("All")
+        val uniqueSubjects = downloadedBooks.map { it.subject.trim() }
+            .filter { it.isNotBlank() && !it.equals("General", ignoreCase = true) }
+            .distinct()
+            .sorted()
+        list.addAll(uniqueSubjects)
+        list
+    }
+
+    // Filter downloaded books by selected subject chip
+    val filteredDownloadedBooks = remember(downloadedBooks, selectedSubject) {
+        if (selectedSubject == "All") {
+            downloadedBooks
+        } else {
+            downloadedBooks.filter { book ->
+                book.subject.equals(selectedSubject, ignoreCase = true) ||
+                        book.tagsCsv.contains(selectedSubject, ignoreCase = true)
+            }
+        }
+    }
+
+    // Group downloaded books by the 5 official catalog types, dynamically displaying only populated types
+    val catalogCategories = remember(filteredDownloadedBooks) {
+        OFFICIAL_CATALOG_TYPES.mapNotNull { type ->
+            val matching = filteredDownloadedBooks.filter { matchesCatalogType(it, type) }
+            if (matching.isNotEmpty()) type to matching else null
+        }
+    }
+
+    // Catch any downloaded books not categorized into the standard 5 types
+    val uncategorizedBooks = remember(filteredDownloadedBooks, catalogCategories) {
+        val categorizedIds = catalogCategories.flatMap { it.second }.map { it.id }.toSet()
+        filteredDownloadedBooks.filter { it.id !in categorizedIds }
+    }
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
+
+    val onOpenBook: (BookEntity) -> Unit = { book ->
+        val finalPath = book.binFilePath.ifEmpty { book.uriString }
+            .ifEmpty {
+                com.example.util.MulberryStorageManager.getBinFileForBook(context, book.slug)
+                    .takeIf { it.exists() }?.absolutePath ?: ""
+            }
+        ReaderActivity.launch(
+            context = context,
+            bookPath = finalPath,
+            bookTitle = book.title,
+            bookId = book.id
+        )
+    }
+
+    val onOpenSession: (ReadingSession) -> Unit = { session ->
+        val fullPath = resolveBookPath(
+            vaultPath = session.vaultPath,
+            bookFileName = session.bookFileName,
+            bookRelativePath = session.bookRelativePath
+        )
+        ReaderActivity.launchSession(
+            context = context,
+            bookPath = fullPath,
+            bookTitle = session.bookTitle,
+            startPage = session.startPage,
+            sessionId = session.id
+        )
     }
 
     Scaffold(
@@ -155,185 +239,363 @@ fun DeskRootScreen(
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Weekly Progress Card
-            item(key = "weekly_progress_card") {
-                WeeklyProgressCard(
-                    completedPages = weeklyCompletedPages,
-                    goalPages = weeklyGoalPages,
-                    plannedPages = weeklyPlannedPages,
-                    progressPercent = weeklyProgressPercent,
-                    onEditGoalClick = { showGoalSheet = true }
-                )
-            }
+        if (isWideScreen) {
+            // RESPONSIVE DUAL-PANE LAYOUT: Left pane for goals & schedule, Right pane for shelves
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // LEFT PANE (Goals & Today's Schedule Sessions)
+                Column(
+                    modifier = Modifier
+                        .width(360.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    WeeklyProgressCard(
+                        completedPages = weeklyCompletedPages,
+                        goalPages = weeklyGoalPages,
+                        plannedPages = weeklyPlannedPages,
+                        progressPercent = weeklyProgressPercent,
+                        onEditGoalClick = { showGoalSheet = true }
+                    )
 
-            // 2. TODAY'S FOCUS SECTION (Horizontal row of cards for books scheduled for today)
-            item(key = "today_focus_header") {
-                val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
-                SectionHeader(
-                    title = "TODAY'S FOCUS",
-                    badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null
-                )
-            }
+                    val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
+                    SectionHeader(
+                        title = "TODAY'S FOCUS",
+                        badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null
+                    )
 
-            if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
-                item(key = "today_empty_state") {
-                    TodayEmptyState(onScheduleClick = {
-                        sessionToEdit = null
-                        showCreateSheet = true
-                    })
-                }
-            } else {
-                // Horizontal Carousel of Today's Focus Goal Cards
-                item(key = "today_focus_row") {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(activeTodaySessions, key = { "active_${it.id}" }) { session ->
-                            TodayFocusSessionCard(
-                                session = session,
-                                isCompleted = false,
-                                onReadClick = {
-                                    val fullPath = resolveBookPath(
-                                        vaultPath = session.vaultPath,
-                                        bookFileName = session.bookFileName,
-                                        bookRelativePath = session.bookRelativePath
-                                    )
-                                    ReaderActivity.launchSession(
-                                        context = context,
-                                        bookPath = fullPath,
-                                        bookTitle = session.bookTitle,
-                                        startPage = session.startPage,
-                                        sessionId = session.id
-                                    )
-                                },
-                                onToggleComplete = {
-                                    deskViewModel.markCompleted(session.id)
-                                }
-                            )
-                        }
-
-                        items(completedTodaySessions, key = { "completed_${it.id}" }) { session ->
-                            TodayFocusSessionCard(
-                                session = session,
-                                isCompleted = true,
-                                onReadClick = {
-                                    val fullPath = resolveBookPath(
-                                        vaultPath = session.vaultPath,
-                                        bookFileName = session.bookFileName,
-                                        bookRelativePath = session.bookRelativePath
-                                    )
-                                    ReaderActivity.launchSession(
-                                        context = context,
-                                        bookPath = fullPath,
-                                        bookTitle = session.bookTitle,
-                                        startPage = session.startPage,
-                                        sessionId = session.id
-                                    )
-                                },
-                                onToggleComplete = {
-                                    deskViewModel.toggleCompleted(session.id)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 3. THE SHELF (Downloaded Storage)
-            item(key = "shelf_header") {
-                SectionHeader(
-                    title = "THE SHELF (DOWNLOADED STORAGE)",
-                    badge = "${downloadedBooks.size} BOOKS"
-                )
-            }
-
-            if (downloadedBooks.isEmpty()) {
-                item(key = "shelf_empty_state") {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = colors.surfaceCard,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
+                        TodayEmptyState(onScheduleClick = {
+                            sessionToEdit = null
+                            showCreateSheet = true
+                        })
+                    } else {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(
-                                imageVector = FluentIcons.ArrowDownload24Regular,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(36.dp)
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "Your shelf is empty",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Browse the Library to download textbooks for offline study.",
-                                fontFamily = InterFamily,
-                                fontSize = 12.sp,
-                                color = colors.textSecondary
-                            )
+                            activeTodaySessions.forEach { session ->
+                                TodayFocusSessionCard(
+                                    session = session,
+                                    isCompleted = false,
+                                    onReadClick = { onOpenSession(session) },
+                                    onToggleComplete = { deskViewModel.markCompleted(session.id) }
+                                )
+                            }
+                            completedTodaySessions.forEach { session ->
+                                TodayFocusSessionCard(
+                                    session = session,
+                                    isCompleted = true,
+                                    onReadClick = { onOpenSession(session) },
+                                    onToggleComplete = { deskViewModel.toggleCompleted(session.id) }
+                                )
+                            }
                         }
                     }
                 }
-            } else {
-                // Grouped into Subject folders based on catalog metadata
-                booksBySubject.forEach { (subject, subjectBooks) ->
-                    item(key = "subject_folder_$subject") {
-                        val isExpanded = !collapsedFolders.contains(subject)
-                        ShelfFolderSection(
-                            folderName = subject,
-                            books = subjectBooks,
-                            isExpanded = isExpanded,
-                            onToggleExpand = {
-                                collapsedFolders = if (isExpanded) {
-                                    collapsedFolders + subject
-                                } else {
-                                    collapsedFolders - subject
-                                }
-                            },
-                            onBookClick = { book ->
-                                val finalPath = book.binFilePath.ifEmpty { book.uriString }
-                                    .ifEmpty {
-                                        com.example.util.MulberryStorageManager.getBinFileForBook(context, book.slug)
-                                            .takeIf { it.exists() }?.absolutePath ?: ""
-                                    }
-                                ReaderActivity.launch(
-                                    context = context,
-                                    bookPath = finalPath,
-                                    bookTitle = book.title,
-                                    bookId = book.id
-                                )
-                            },
-                            onBookLongClick = { book ->
-                                selectedShelfBook = book
-                            }
+
+                // Vertical Hairline Divider
+                Box(
+                    modifier = Modifier
+                        .width(0.5.dp)
+                        .fillMaxHeight()
+                        .background(colors.borderSubtle)
+                )
+
+                // RIGHT PANE (The Shelf - Downloaded Storage with embedded progress covers)
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item(key = "shelf_header_wide") {
+                        SectionHeader(
+                            title = "Shelf",
+                            badge = "${filteredDownloadedBooks.size} BOOKS",
+                            icon = FluentIcons.LibrarySpines24Regular
                         )
                     }
+
+                    // Horizontal Subject Filter Chips Row
+                    if (downloadedBooks.isNotEmpty() && availableSubjects.size > 2) {
+                        item(key = "shelf_subject_chips_wide") {
+                            LazyRow(
+                                contentPadding = PaddingValues(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(availableSubjects) { subject ->
+                                    val isSelected = selectedSubject == subject
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isSelected) colors.primary.copy(alpha = 0.22f) else colors.surfaceCard,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (isSelected) colors.primary else colors.borderSubtle
+                                        ),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .clickable { selectedSubject = subject }
+                                            .testTag("desk_subject_chip_wide_$subject")
+                                    ) {
+                                        Text(
+                                            text = subject,
+                                            fontFamily = InterFamily,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 12.5.sp,
+                                            color = if (isSelected) colors.primary else colors.textSecondary,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (downloadedBooks.isEmpty()) {
+                        item(key = "shelf_empty_wide") {
+                            ShelfEmptyStateCard()
+                        }
+                    } else if (catalogCategories.isEmpty() && uncategorizedBooks.isEmpty()) {
+                        item(key = "shelf_empty_filter_wide") {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = colors.surfaceCard,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "No books downloaded for \"$selectedSubject\"",
+                                        fontFamily = PoppinsFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        color = colors.textPrimary
+                                    )
+                                    TextButton(onClick = { selectedSubject = "All" }) {
+                                        Text("Show All Books", color = colors.primary, fontFamily = InterFamily)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val displayCategories = catalogCategories + if (uncategorizedBooks.isNotEmpty()) {
+                            listOf("Other Resources" to uncategorizedBooks)
+                        } else emptyList()
+
+                        displayCategories.forEach { (catName, catBooks) ->
+                            item(key = "desk_cat_wide_$catName") {
+                                val isExpanded = !collapsedFolders.contains(catName)
+                                DeskShelfCategorySection(
+                                    folderName = catName,
+                                    books = catBooks,
+                                    isExpanded = isExpanded,
+                                    onToggleExpand = {
+                                        collapsedFolders = if (isExpanded) {
+                                            collapsedFolders + catName
+                                        } else {
+                                            collapsedFolders - catName
+                                        }
+                                    },
+                                    onBookClick = onOpenBook,
+                                    onBookLongClick = { selectedShelfBook = it }
+                                )
+                            }
+                        }
+                    }
+
+                    item(key = "wide_bottom_space") {
+                        Spacer(modifier = Modifier.height(48.dp))
+                    }
                 }
             }
+        } else {
+            // PORTRAIT SINGLE-COLUMN FLUID LAYOUT
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. Shortened Weekly Progress Card
+                item(key = "weekly_progress_card") {
+                    WeeklyProgressCard(
+                        completedPages = weeklyCompletedPages,
+                        goalPages = weeklyGoalPages,
+                        plannedPages = weeklyPlannedPages,
+                        progressPercent = weeklyProgressPercent,
+                        onEditGoalClick = { showGoalSheet = true }
+                    )
+                }
 
-            // Bottom Spacing
-            item(key = "bottom_spacer") {
-                Spacer(modifier = Modifier.height(60.dp))
+                // 2. TODAY'S FOCUS SECTION
+                item(key = "today_focus_header") {
+                    val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
+                    SectionHeader(
+                        title = "TODAY'S FOCUS",
+                        badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null
+                    )
+                }
+
+                if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
+                    item(key = "today_empty_state") {
+                        TodayEmptyState(onScheduleClick = {
+                            sessionToEdit = null
+                            showCreateSheet = true
+                        })
+                    }
+                } else {
+                    item(key = "today_focus_row") {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(activeTodaySessions, key = { "active_${it.id}" }) { session ->
+                                TodayFocusSessionCard(
+                                    session = session,
+                                    isCompleted = false,
+                                    onReadClick = { onOpenSession(session) },
+                                    onToggleComplete = { deskViewModel.markCompleted(session.id) }
+                                )
+                            }
+
+                            items(completedTodaySessions, key = { "completed_${it.id}" }) { session ->
+                                TodayFocusSessionCard(
+                                    session = session,
+                                    isCompleted = true,
+                                    onReadClick = { onOpenSession(session) },
+                                    onToggleComplete = { deskViewModel.toggleCompleted(session.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 3. THE SHELF (Downloaded Storage)
+                item(key = "shelf_header") {
+                    SectionHeader(
+                        title = "Shelf",
+                        badge = "${filteredDownloadedBooks.size} BOOKS",
+                        icon = FluentIcons.LibrarySpines24Regular
+                    )
+                }
+
+                // Horizontal Subject Filter Chips Row
+                if (downloadedBooks.isNotEmpty() && availableSubjects.size > 2) {
+                    item(key = "shelf_subject_chips") {
+                        LazyRow(
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(availableSubjects) { subject ->
+                                val isSelected = selectedSubject == subject
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isSelected) colors.primary.copy(alpha = 0.22f) else colors.surfaceCard,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isSelected) colors.primary else colors.borderSubtle
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .clickable { selectedSubject = subject }
+                                        .testTag("desk_subject_chip_$subject")
+                                ) {
+                                    Text(
+                                        text = subject,
+                                        fontFamily = InterFamily,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 12.5.sp,
+                                        color = if (isSelected) colors.primary else colors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (downloadedBooks.isEmpty()) {
+                    item(key = "shelf_empty_state") {
+                        ShelfEmptyStateCard()
+                    }
+                } else if (catalogCategories.isEmpty() && uncategorizedBooks.isEmpty()) {
+                    item(key = "shelf_empty_filter") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = colors.surfaceCard,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "No books downloaded for \"$selectedSubject\"",
+                                    fontFamily = PoppinsFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = colors.textPrimary
+                                )
+                                TextButton(onClick = { selectedSubject = "All" }) {
+                                    Text("Show All Books", color = colors.primary, fontFamily = InterFamily)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    val displayCategories = catalogCategories + if (uncategorizedBooks.isNotEmpty()) {
+                        listOf("Other Resources" to uncategorizedBooks)
+                    } else emptyList()
+
+                    displayCategories.forEach { (catName, catBooks) ->
+                        item(key = "subject_shelf_$catName") {
+                            val isExpanded = !collapsedFolders.contains(catName)
+                            DeskShelfCategorySection(
+                                folderName = catName,
+                                books = catBooks,
+                                isExpanded = isExpanded,
+                                onToggleExpand = {
+                                    collapsedFolders = if (isExpanded) {
+                                        collapsedFolders + catName
+                                    } else {
+                                        collapsedFolders - catName
+                                    }
+                                },
+                                onBookClick = onOpenBook,
+                                onBookLongClick = { selectedShelfBook = it }
+                            )
+                        }
+                    }
+                }
+
+                item(key = "bottom_spacer") {
+                    Spacer(modifier = Modifier.height(60.dp))
+                }
             }
         }
     }
@@ -492,7 +754,7 @@ fun DeskRootScreen(
     if (showCreateSheet) {
         ScheduleSessionSheet(
             sheetState = sheetState,
-            vaultBooks = downloadedBooks.ifEmpty { vaultBooks },
+            vaultBooks = downloadedBooks.ifEmpty { vaultBooks }.ifEmpty { allCatalogBooks },
             existingSession = sessionToEdit,
             onDismiss = {
                 coroutineScope.launch {
@@ -763,7 +1025,7 @@ private fun TodayFocusSessionCard(
 }
 
 @Composable
-private fun ShelfFolderSection(
+private fun DeskShelfCategorySection(
     folderName: String,
     books: List<BookEntity>,
     isExpanded: Boolean,
@@ -774,47 +1036,73 @@ private fun ShelfFolderSection(
     val colors = LocalMulberryColors.current
 
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
     ) {
-        // Collapsible Folder Header
+        // Library-style Section Header with Title, Count Pill Badge, and Expand/Collapse Icon
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { onToggleExpand() }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = if (isExpanded) FluentIcons.ChevronDown24Regular else FluentIcons.ChevronRight24Regular,
-                contentDescription = if (isExpanded) "Collapse $folderName" else "Expand $folderName",
-                tint = colors.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = FluentIcons.Folder24Regular,
-                contentDescription = null,
-                tint = colors.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "$folderName (${books.size} ${if (books.size == 1) "Book" else "Books"})",
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = colors.textPrimary
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = folderName,
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = colors.textPrimary,
+                    letterSpacing = (-0.3).sp
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = colors.surfaceCard,
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
+                    modifier = Modifier.size(22.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "${books.size}",
+                            fontFamily = InterFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onToggleExpand,
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    imageVector = if (isExpanded) FluentIcons.ChevronDown24Regular else FluentIcons.ChevronRight24Regular,
+                    contentDescription = if (isExpanded) "Collapse $folderName" else "Expand $folderName",
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         AnimatedVisibility(visible = isExpanded) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Horizontal Carousel of High-Fidelity Shelf Book Cards
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                books.forEach { book ->
-                    ShelfBookCard(
+                items(books, key = { it.slug.ifEmpty { "book_${it.id}" } }) { book ->
+                    DeskShelfBookCard(
                         book = book,
                         onClick = { onBookClick(book) },
                         onLongClick = { onBookLongClick(book) }
@@ -825,115 +1113,167 @@ private fun ShelfFolderSection(
     }
 }
 
+/**
+ * High-fidelity Desk Shelf Book Card matching Library page aesthetics,
+ * with an embedded reading progress bar across the bottom edge of the cover art.
+ */
 @Composable
-private fun ShelfBookCard(
+private fun DeskShelfBookCard(
     book: BookEntity,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier.width(136.dp)
 ) {
     val colors = LocalMulberryColors.current
+    val context = LocalContext.current
 
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = colors.surfaceCard,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+    val editionLabel = remember(book.edition, book.tagsCsv) {
+        when {
+            book.edition.isNotBlank() && !book.edition.equals("General", ignoreCase = true) -> {
+                if (book.edition.contains("Edition", ignoreCase = true)) {
+                    book.edition.replace("Edition", "Ed").trim()
+                } else {
+                    book.edition
+                }
+            }
+            book.tagsCsv.contains("8th", ignoreCase = true) -> "8th Ed"
+            book.tagsCsv.contains("14th", ignoreCase = true) -> "14th Ed"
+            book.tagsCsv.contains("10th", ignoreCase = true) -> "10th Ed"
+            book.tagsCsv.contains("9th", ignoreCase = true) -> "9th Ed"
+            else -> null
+        }
+    }
+
+    val totalPages = book.pageCount.coerceAtLeast(1)
+    val readPages = book.lastReadPage.coerceIn(0, totalPages)
+    val percent = ((readPages.toFloat() / totalPages.toFloat()) * 100f).toInt().coerceIn(0, 100)
+    val progressFraction = (percent / 100f).coerceIn(0f, 1f)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "desk_book_press_scale"
+    )
+
+    Column(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(14.dp))
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .testTag("shelf_book_${book.slug}")
+            .testTag("desk_shelf_book_${book.slug.ifEmpty { book.id.toString() }}")
     ) {
-        Row(
+        // Book Cover Art with Badges & Embedded Progress Line
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .aspectRatio(3f / 4.1f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceCard)
+                .border(0.5.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
         ) {
-            // Cover Image Preview
-            Box(
-                modifier = Modifier
-                    .width(52.dp)
-                    .height(72.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.surfaceTint),
-                contentAlignment = Alignment.Center
-            ) {
-                if (book.coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(book.coverUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = book.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        imageVector = FluentIcons.Book24Regular,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(book.coverUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Cover of ${book.title}",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize()
+            )
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = book.title,
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                val percent = if (book.pageCount > 0) {
-                    ((book.lastReadPage.toFloat() / book.pageCount.toFloat()) * 100f).toInt().coerceIn(0, 100)
-                } else 0
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // Top-Right Edition Pill Badge
+            if (!editionLabel.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.72f),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
                 ) {
                     Text(
-                        text = "Page ${book.lastReadPage} of ${book.pageCount}",
+                        text = editionLabel,
                         fontFamily = InterFamily,
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
-                    )
-                    Text(
-                        text = "[$percent%]",
-                        fontFamily = InterFamily,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = colors.primary
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Progress Bar (No delete 'X' button on card face!)
-                LinearProgressIndicator(
-                    progress = { (percent / 100f).coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(2.5.dp)),
-                    color = colors.primary,
-                    trackColor = colors.surfaceTint
+            // Bottom-Right Reading Progress Pill Badge
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color.Black.copy(alpha = 0.78f),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 9.dp, end = 6.dp)
+            ) {
+                Text(
+                    text = if (percent > 0) "p. $readPages • $percent%" else "${book.pageCount}p",
+                    fontFamily = InterFamily,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (percent >= 100) colors.primary else Color.White,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
+
+            // Embedded Reading Progress Line across bottom edge of the cover container
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .background(Color.Black.copy(alpha = 0.5f))
+            ) {
+                if (progressFraction > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progressFraction)
+                            .fillMaxHeight()
+                            .background(colors.primary)
+                    )
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        // Book Title (2 lines max)
+        Text(
+            text = book.title,
+            fontFamily = PoppinsFamily,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            color = colors.textPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 17.sp
+        )
+
+        // Author / Subject Subtitle (1 line)
+        Text(
+            text = book.author.ifBlank { book.subject }.ifBlank { "Textbook" },
+            fontFamily = InterFamily,
+            fontSize = 11.sp,
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -988,14 +1328,14 @@ private fun WeeklyProgressCard(
     val colors = LocalMulberryColors.current
     val animatedProgress by animateFloatAsState(
         targetValue = (progressPercent / 100f).coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = 600),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "WeeklyProgress"
     )
 
     ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = colors.surfaceCard),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.5.dp),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("weekly_progress_card")
@@ -1003,7 +1343,7 @@ private fun WeeklyProgressCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1015,70 +1355,78 @@ private fun WeeklyProgressCard(
                         imageVector = FluentIcons.DataTrending24Regular,
                         contentDescription = "Weekly Goal",
                         tint = colors.primary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Weekly Goal",
                         fontFamily = PoppinsFamily,
-                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
                         color = colors.textPrimary
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
                         onClick = onEditGoalClick,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = FluentIcons.Edit24Regular,
                             contentDescription = "Configure Target",
                             tint = colors.primary,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                     }
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = colors.primary.copy(alpha = 0.12f)
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.primary.copy(alpha = 0.14f)
                 ) {
                     Text(
                         text = "$progressPercent%",
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontFamily = InterFamily,
                         fontWeight = FontWeight.Bold,
                         color = colors.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            Text(
-                text = "$completedPages / $goalPages pages read",
-                fontFamily = InterFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = colors.textPrimary
-            )
+            // Concise single-line stat: "X / Y pages read • Z planned"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$completedPages / $goalPages pages read",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = colors.textPrimary
+                )
+                if (plannedPages > 0) {
+                    Text(
+                        text = "$plannedPages planned",
+                        fontFamily = InterFamily,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+            }
 
-            Text(
-                text = "Scheduled for this week: $plannedPages pages",
-                fontFamily = InterFamily,
-                fontSize = 12.sp,
-                color = colors.textSecondary
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp)),
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
                 color = colors.primary,
                 trackColor = colors.surfaceTint
             )
@@ -1089,7 +1437,8 @@ private fun WeeklyProgressCard(
 @Composable
 private fun SectionHeader(
     title: String,
-    badge: String?
+    badge: String?,
+    icon: ImageVector? = null
 ) {
     val colors = LocalMulberryColors.current
     Row(
@@ -1099,14 +1448,27 @@ private fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = title,
-            fontFamily = PoppinsFamily,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.textSecondary,
-            letterSpacing = 1.sp
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = title,
+                fontFamily = PoppinsFamily,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textSecondary,
+                letterSpacing = 1.sp
+            )
+        }
         if (badge != null) {
             Text(
                 text = badge,
@@ -1114,6 +1476,46 @@ private fun SectionHeader(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = colors.textSecondary.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShelfEmptyStateCard() {
+    val colors = LocalMulberryColors.current
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = colors.surfaceCard,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = FluentIcons.ArrowDownload24Regular,
+                contentDescription = null,
+                tint = colors.primary,
+                modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Your shelf is empty",
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = colors.textPrimary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Browse the Library to download textbooks for offline study.",
+                fontFamily = InterFamily,
+                fontSize = 12.sp,
+                color = colors.textSecondary
             )
         }
     }

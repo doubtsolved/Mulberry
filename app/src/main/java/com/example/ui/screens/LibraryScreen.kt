@@ -2,15 +2,30 @@
 
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +33,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -276,245 +292,182 @@ fun LibraryScreen(
             .background(colors.backgroundGradient)
             .statusBarsPadding()
     ) {
-        // Dedicated Full-Screen Category View (when expandedCategory != null)
-        if (expandedCategory != null) {
-            DedicatedCategoryScreen(
-                categoryTitle = expandedCategory!!,
-                books = expandedBooks,
-                onBack = { expandedCategory = null },
-                onBookClick = { book ->
-                    selectedBookId = book.slug.ifEmpty { book.id.toString() }
-                }
-            )
-        } else {
-            // Main Shelf Screen with Native Drag-Down-To-Refresh
-            PullToRefreshBox(
-                isRefreshing = isSyncing,
-                onRefresh = { viewModel.refreshLibrary() },
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // 1. TOP HEADER ("Mulberry Shelf" - Subtitle removed, manual refresh icon removed)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+        val configuration = LocalConfiguration.current
+        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
+
+        if (isWideScreen) {
+            // RESPONSIVE DUAL-PANE VIEW FOR LANDSCAPE / LARGE SCREENS
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left Pane: Main Library shelves list
+                Box(
+                    modifier = Modifier
+                        .then(
+                            if (expandedCategory != null) Modifier.width(380.dp) else Modifier.fillMaxWidth()
+                        )
+                        .fillMaxHeight()
+                ) {
+                    PullToRefreshBox(
+                        isRefreshing = isSyncing,
+                        onRefresh = { viewModel.refreshLibrary() },
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Text(
-                            text = "Mulberry Shelf",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp,
-                            color = colors.textPrimary,
-                            letterSpacing = (-0.5).sp,
-                            modifier = Modifier.testTag("mulberry_shelf_title")
+                        LibraryMainShelfContent(
+                            colors = colors,
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it },
+                            selectedProf = selectedProf,
+                            selectedSubject = selectedSubject,
+                            onSelectedSubjectChange = { selectedSubject = it },
+                            categoryRows = categoryRows,
+                            expandedCategory = expandedCategory,
+                            onExpandCategory = { cat ->
+                                expandedCategory = if (expandedCategory == cat) null else cat
+                            },
+                            onBookClick = { book ->
+                                selectedBookId = book.slug.ifEmpty { book.id.toString() }
+                            },
+                            onClearFocus = { focusManager.clearFocus() }
                         )
                     }
+                }
 
-                    // 2. FULL-WIDTH SEARCH BAR ROW (Prof selection moved to Profile in Settings)
-                    Row(
+                // Vertical Hairline Divider with smooth fade
+                AnimatedVisibility(
+                    visible = expandedCategory != null,
+                    enter = fadeIn(animationSpec = tween(220)),
+                    exit = fadeOut(animationSpec = tween(160))
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(24.dp),
-                            color = colors.surfaceCard,
-                            border = BorderStroke(1.dp, colors.borderSubtle),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = FluentIcons.Search24Regular,
-                                    contentDescription = "Search",
-                                    tint = colors.textSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                BasicTextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("search_textbooks_input"),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                        color = colors.textPrimary,
-                                        fontFamily = InterFamily,
-                                        fontSize = 13.5.sp
-                                    ),
-                                    cursorBrush = SolidColor(colors.primary),
-                                    decorationBox = { innerTextField ->
-                                        if (searchQuery.isEmpty()) {
-                                            Text(
-                                                text = "Search by tag, subject, book, or author...",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = colors.textMuted,
-                                                fontFamily = InterFamily,
-                                                fontSize = 13.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                )
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = { searchQuery = "" },
-                                        modifier = Modifier.size(22.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = FluentIcons.Dismiss24Regular,
-                                            contentDescription = "Clear",
-                                            tint = colors.textSecondary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
+                            .width(0.5.dp)
+                            .fillMaxHeight()
+                            .background(colors.borderSubtle)
+                    )
+                }
+
+                // Right Pane: Supporting Expanded Category View with subtle horizontal slide from right + gentle fade
+                AnimatedVisibility(
+                    visible = expandedCategory != null,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { fullWidth -> (fullWidth * 0.25f).toInt() },
+                        animationSpec = spring(
+                            dampingRatio = 0.82f,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) + fadeIn(
+                        animationSpec = tween(220, easing = LinearOutSlowInEasing)
+                    ),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> (fullWidth * 0.25f).toInt() },
+                        animationSpec = tween(200, easing = FastOutSlowInEasing)
+                    ) + fadeOut(
+                        animationSpec = tween(160)
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    val activeCat = expandedCategory
+                    if (activeCat != null) {
+                        // Smoothly transition content when switching between categories while open
+                        AnimatedContent(
+                            targetState = activeCat,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(200)) + slideInHorizontally { width -> (width * 0.12f).toInt() })
+                                    .togetherWith(fadeOut(animationSpec = tween(150)) + slideOutHorizontally { width -> (-width * 0.12f).toInt() })
+                            },
+                            label = "wide_category_content_transition"
+                        ) { catTitle ->
+                            val booksForCat = remember(categoryRows, catTitle) {
+                                categoryRows.find { it.first == catTitle }?.second ?: emptyList()
                             }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // 3. HORIZONTAL SUBJECT FILTER CHIPS ROW
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        item {
-                            val isSelected = selectedSubject == "All"
-                            SubjectFilterChip(
-                                label = "All",
-                                isSelected = isSelected,
-                                onClick = { selectedSubject = "All" }
-                            )
-                        }
-
-                        items(selectedProf.subjects) { subject ->
-                            val isSelected = selectedSubject == subject
-                            SubjectFilterChip(
-                                label = subject,
-                                isSelected = isSelected,
-                                onClick = {
-                                    selectedSubject = if (isSelected) "All" else subject
-                                }
+                            ExpandedCategoryPane(
+                                categoryTitle = catTitle,
+                                books = booksForCat,
+                                onClose = { expandedCategory = null },
+                                onBookClick = { book ->
+                                    selectedBookId = book.slug.ifEmpty { book.id.toString() }
+                                },
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     }
-
-                    // 4. MAIN BODY - CATEGORY ROWS WITH EXPAND ACTION
-                    if (categoryRows.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = colors.surfaceCard,
-                                    border = BorderStroke(1.dp, colors.borderSubtle),
-                                    modifier = Modifier.size(64.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = FluentIcons.Book24Regular,
-                                            contentDescription = null,
-                                            tint = colors.textSecondary.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(32.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = "No books found on shelf",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 17.sp,
-                                    color = colors.textPrimary
-                                )
-                                Text(
-                                    text = if (searchQuery.isNotBlank()) "No match for \"$searchQuery\" in ${selectedProf.shortName}"
-                                    else "No textbooks currently cataloged under $selectedSubject",
-                                    fontFamily = InterFamily,
-                                    fontSize = 13.sp,
-                                    color = colors.textSecondary,
-                                    textAlign = TextAlign.Center
-                                )
-                                if (selectedSubject != "All" || searchQuery.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    OutlinedButton(
-                                        onClick = {
-                                            selectedSubject = "All"
-                                            searchQuery = ""
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, colors.borderSubtle)
-                                    ) {
-                                        Text(
-                                            text = "Reset Filters",
-                                            fontFamily = InterFamily,
-                                            fontSize = 12.sp,
-                                            color = colors.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                }
+            }
+        } else {
+            // MOBILE SCREEN: Push & Pop Horizontal Slide with gentle fade
+            AnimatedContent(
+                targetState = expandedCategory,
+                transitionSpec = {
+                    if (targetState != null) {
+                        // Forward push: Dedicated screen slides in from right + soft fade, main shelf slides left
+                        (slideInHorizontally(
+                            initialOffsetX = { fullWidth -> (fullWidth * 0.28f).toInt() },
+                            animationSpec = spring(
+                                dampingRatio = 0.85f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing)))
+                            .togetherWith(
+                                slideOutHorizontally(
+                                    targetOffsetX = { fullWidth -> (-fullWidth * 0.15f).toInt() },
+                                    animationSpec = tween(200, easing = FastOutSlowInEasing)
+                                ) + fadeOut(animationSpec = tween(160))
+                            )
                     } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 90.dp)
-                        ) {
-                            categoryRows.forEach { (categoryName, categoryBooks) ->
-                                item(key = "header_$categoryName") {
-                                    CategoryRowHeader(
-                                        title = categoryName,
-                                        count = categoryBooks.size,
-                                        onExpandClick = {
-                                            expandedCategory = categoryName
-                                        }
-                                    )
-                                }
-
-                                item(key = "row_$categoryName") {
-                                    LazyRow(
-                                        contentPadding = PaddingValues(horizontal = 20.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(bottom = 18.dp)
-                                    ) {
-                                        items(categoryBooks, key = { it.slug.ifEmpty { "book_${it.id}" } }) { book ->
-                                            ShelfBookCard(
-                                                book = book,
-                                                onClick = {
-                                                    selectedBookId = book.slug.ifEmpty { book.id.toString() }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                        // Backward pop: Main shelf slides in from left, dedicated screen slides out to right
+                        (slideInHorizontally(
+                            initialOffsetX = { fullWidth -> (-fullWidth * 0.15f).toInt() },
+                            animationSpec = spring(
+                                dampingRatio = 0.85f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing)))
+                            .togetherWith(
+                                slideOutHorizontally(
+                                    targetOffsetX = { fullWidth -> (fullWidth * 0.28f).toInt() },
+                                    animationSpec = tween(200, easing = FastOutSlowInEasing)
+                                ) + fadeOut(animationSpec = tween(160))
+                            )
+                    }
+                },
+                label = "mobile_category_transition",
+                modifier = Modifier.fillMaxSize()
+            ) { targetCategory ->
+                if (targetCategory != null) {
+                    val booksForCategory = remember(categoryRows, targetCategory) {
+                        categoryRows.find { it.first == targetCategory }?.second ?: emptyList()
+                    }
+                    DedicatedCategoryScreen(
+                        categoryTitle = targetCategory,
+                        books = booksForCategory,
+                        onBack = { expandedCategory = null },
+                        onBookClick = { book ->
+                            selectedBookId = book.slug.ifEmpty { book.id.toString() }
                         }
+                    )
+                } else {
+                    PullToRefreshBox(
+                        isRefreshing = isSyncing,
+                        onRefresh = { viewModel.refreshLibrary() },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        LibraryMainShelfContent(
+                            colors = colors,
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it },
+                            selectedProf = selectedProf,
+                            selectedSubject = selectedSubject,
+                            onSelectedSubjectChange = { selectedSubject = it },
+                            categoryRows = categoryRows,
+                            expandedCategory = null,
+                            onExpandCategory = { expandedCategory = it },
+                            onBookClick = { book ->
+                                selectedBookId = book.slug.ifEmpty { book.id.toString() }
+                            },
+                            onClearFocus = { focusManager.clearFocus() }
+                        )
                     }
                 }
             }
@@ -564,6 +517,248 @@ fun LibraryScreen(
                 },
                 onDismiss = { selectedBookId = null }
             )
+        }
+    }
+}
+
+/**
+ * Main Shelf content containing the title, search bar, subject filter chips, and category shelves.
+ */
+@Composable
+private fun LibraryMainShelfContent(
+    colors: com.example.ui.theme.MulberryColors,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    selectedProf: ProfCurriculum,
+    selectedSubject: String,
+    onSelectedSubjectChange: (String) -> Unit,
+    categoryRows: List<Pair<String, List<BookEntity>>>,
+    expandedCategory: String?,
+    onExpandCategory: (String) -> Unit,
+    onBookClick: (BookEntity) -> Unit,
+    onClearFocus: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        // 1. TOP HEADER ("Mulberry Shelf")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Mulberry Shelf",
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                color = colors.textPrimary,
+                letterSpacing = (-0.5).sp,
+                modifier = Modifier.testTag("mulberry_shelf_title")
+            )
+        }
+
+        // 2. FULL-WIDTH SEARCH BAR ROW
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Search24Regular,
+                        contentDescription = "Search",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("search_textbooks_input"),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { onClearFocus() }),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = colors.textPrimary,
+                            fontFamily = InterFamily,
+                            fontSize = 13.5.sp
+                        ),
+                        cursorBrush = SolidColor(colors.primary),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search by tag, subject, book, or author...",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = colors.textSecondary.copy(alpha = 0.7f),
+                                        fontFamily = InterFamily,
+                                        fontSize = 13.5.sp
+                                    )
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onSearchQueryChange("") },
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = FluentIcons.Dismiss24Regular,
+                                contentDescription = "Clear",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // 3. HORIZONTAL SUBJECT FILTER CHIPS ROW
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item {
+                val isSelected = selectedSubject == "All"
+                SubjectFilterChip(
+                    label = "All",
+                    isSelected = isSelected,
+                    onClick = { onSelectedSubjectChange("All") }
+                )
+            }
+
+            items(selectedProf.subjects) { subject ->
+                val isSelected = selectedSubject == subject
+                SubjectFilterChip(
+                    label = subject,
+                    isSelected = isSelected,
+                    onClick = {
+                        onSelectedSubjectChange(if (isSelected) "All" else subject)
+                    }
+                )
+            }
+        }
+
+        // 4. MAIN BODY - CATEGORY ROWS WITH EXPAND ACTION
+        if (categoryRows.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.surfaceCard,
+                        border = BorderStroke(1.dp, colors.borderSubtle),
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = FluentIcons.Book24Regular,
+                                contentDescription = null,
+                                tint = colors.textSecondary.copy(alpha = 0.6f),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "No books found on shelf",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "No match for \"$searchQuery\" in ${selectedProf.shortName}"
+                        else "No textbooks currently cataloged under $selectedSubject",
+                        fontFamily = InterFamily,
+                        fontSize = 13.sp,
+                        color = colors.textSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    if (selectedSubject != "All" || searchQuery.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                onSelectedSubjectChange("All")
+                                onSearchQueryChange("")
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, colors.borderSubtle)
+                        ) {
+                            Text(
+                                text = "Reset Filters",
+                                fontFamily = InterFamily,
+                                fontSize = 12.sp,
+                                color = colors.primary
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 90.dp)
+            ) {
+                categoryRows.forEach { (categoryName, categoryBooks) ->
+                    item(key = "header_$categoryName") {
+                        CategoryRowHeader(
+                            title = categoryName,
+                            count = categoryBooks.size,
+                            isExpanded = expandedCategory == categoryName,
+                            onExpandClick = {
+                                onExpandCategory(categoryName)
+                            }
+                        )
+                    }
+
+                    item(key = "row_$categoryName") {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 18.dp)
+                        ) {
+                            items(categoryBooks, key = { it.slug.ifEmpty { "book_${it.id}" } }) { book ->
+                                ShelfBookCard(
+                                    book = book,
+                                    onClick = { onBookClick(book) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -645,6 +840,85 @@ private fun DedicatedCategoryScreen(
 }
 
 /**
+ * Dual-Pane Supporting Side Pane for Landscape & Large Screen devices.
+ */
+@Composable
+private fun ExpandedCategoryPane(
+    categoryTitle: String,
+    books: List<BookEntity>,
+    onClose: () -> Unit,
+    onBookClick: (BookEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalMulberryColors.current
+
+    Column(
+        modifier = modifier
+            .background(colors.backgroundGradient)
+    ) {
+        // Supporting Pane Header with Close Action
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = categoryTitle,
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${books.size} resources available",
+                    fontFamily = InterFamily,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
+            }
+
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("btn_close_category_pane")
+            ) {
+                Icon(
+                    imageVector = FluentIcons.Dismiss24Regular,
+                    contentDescription = "Close $categoryTitle pane",
+                    tint = colors.textPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(color = colors.borderSubtle, thickness = 0.5.dp)
+
+        // Adaptive Multi-Column Grid
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 136.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(books, key = { it.slug.ifEmpty { "cat_pane_${it.id}" } }) { book ->
+                ShelfBookCard(
+                    book = book,
+                    onClick = { onBookClick(book) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
  * Filter Chip Pill for Subject Selection.
  */
 @Composable
@@ -685,6 +959,7 @@ private fun SubjectFilterChip(
 private fun CategoryRowHeader(
     title: String,
     count: Int,
+    isExpanded: Boolean = false,
     onExpandClick: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
@@ -705,14 +980,14 @@ private fun CategoryRowHeader(
                 fontFamily = PoppinsFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
-                color = colors.textPrimary,
+                color = if (isExpanded) colors.primary else colors.textPrimary,
                 letterSpacing = (-0.3).sp
             )
 
             Surface(
                 shape = CircleShape,
-                color = colors.surfaceCard,
-                border = BorderStroke(0.5.dp, colors.borderSubtle),
+                color = if (isExpanded) colors.primary.copy(alpha = 0.18f) else colors.surfaceCard,
+                border = BorderStroke(0.5.dp, if (isExpanded) colors.primary else colors.borderSubtle),
                 modifier = Modifier.size(22.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -721,7 +996,7 @@ private fun CategoryRowHeader(
                         fontFamily = InterFamily,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.textSecondary
+                        color = if (isExpanded) colors.primary else colors.textSecondary
                     )
                 }
             }
@@ -735,9 +1010,9 @@ private fun CategoryRowHeader(
                 .testTag("btn_expand_$title")
         ) {
             Icon(
-                imageVector = FluentIcons.ChevronRight24Regular,
-                contentDescription = "Expand $title into full vertical view",
-                tint = colors.textSecondary,
+                imageVector = if (isExpanded) FluentIcons.Dismiss24Regular else FluentIcons.ChevronRight24Regular,
+                contentDescription = if (isExpanded) "Close $title pane" else "Expand $title into full vertical view",
+                tint = if (isExpanded) colors.primary else colors.textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -773,10 +1048,28 @@ private fun ShelfBookCard(
         }
     }
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "shelf_book_press_scale"
+    )
+
     Column(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick() }
             .testTag("shelf_book_${book.slug.ifEmpty { book.id.toString() }}")
     ) {
         // Book Cover Art with Badges
