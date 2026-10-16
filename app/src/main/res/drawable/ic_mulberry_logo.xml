@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="1024dp"
+    android:height="1024dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- 1. SQUIRCLE CONTAINER BASE -->
+    <path
+        android:pathData="M 240,12 L 784,12 C 909.92,12 1012,114.08 1012,240 L 1012,784 C 1012,909.92 909.92,1012 784,1012 L 240,1012 C 114.08,1012 12,909.92 12,784 L 12,240 C 12,114.08 114.08,12 240,12 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="12"
+                android:startY="12"
+                android:endX="1012"
+                android:endY="1012">
+                <item android:offset="0.0" android:color="#FFFBFD" />
+                <item android:offset="0.55" android:color="#F8F1FF" />
+                <item android:offset="1.0" android:color="#EFE3FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 2. AMBIENT GLOW OVERLAY -->
+    <path
+        android:pathData="M 240,12 L 784,12 C 909.92,12 1012,114.08 1012,240 L 1012,784 C 1012,909.92 909.92,1012 784,1012 L 240,1012 C 114.08,1012 12,909.92 12,784 L 12,240 C 12,114.08 114.08,12 240,12 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="512"
+                android:centerY="972.8"
+                android:gradientRadius="665.6">
+                <item android:offset="0.0" android:color="#A6E8D0FF" />
+                <item android:offset="0.60" android:color="#33F3E8FF" />
+                <item android:offset="1.0" android:color="#00FFFBFD" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 3. INNER TONAL BORDER STROKE -->
+    <path
+        android:pathData="M 240,16 L 784,16 C 907.71,16 1008,116.29 1008,240 L 1008,784 C 1008,907.71 907.71,1008 784,1008 L 240,1008 C 116.29,1008 16,907.71 16,784 L 16,240 C 16,116.29 116.29,16 240,16 Z"
+        android:strokeWidth="6">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="512"
+                android:startY="16"
+                android:endX="512"
+                android:endY="1008">
+                <item android:offset="0.0" android:color="#E6FFFFFF" />
+                <item android:offset="1.0" android:color="#80DEC9F6" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 4. SOFT ELEVATION SHADOW UNDER MOTIF -->
+    <path
+        android:fillColor="#1A581C87"
+        android:pathData="M 196,386 C 196,372 207,364 221,365 C 374,376 481,474 481,617 L 481,822 L 276,822 C 228,822 196,790 196,742 Z" />
+    <path
+        android:fillColor="#1A581C87"
+        android:pathData="M 511,822 L 511,690 C 511,566 618,480 775,441 C 789,438 798,447 798,461 L 798,742 C 798,790 766,822 718,822 Z" />
+
+    <!-- 5. LEFT WING / PAGE WITH CLIP PATH -->
+    <group>
+        <clip-path
+            android:pathData="M 196,374 C 196,360 207,352 221,353 C 374,364 481,462 481,605 L 481,810 L 276,810 C 228,810 196,778 196,730 Z" />
+
+        <!-- Layer 1: Vivid Violet Base -->
+        <path android:pathData="M 190,345 L 490,345 L 490,820 L 190,820 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="235"
+                    android:startY="392.5"
+                    android:endX="445"
+                    android:endY="796.25">
+                    <item android:offset="0.0" android:color="#6D28D9" />
+                    <item android:offset="1.0" android:color="#8B5CF6" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 2: Mid Sweeping Tonal Band -->
+        <path android:pathData="M 190,468 C 325,468 438,585 481,810 L 190,810 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="190"
+                    android:startY="536.4"
+                    android:endX="481"
+                    android:endY="810">
+                    <item android:offset="0.0" android:color="#9333EA" />
+                    <item android:offset="0.65" android:color="#C084FC" />
+                    <item android:offset="1.0" android:color="#F0ABFC" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 3: Inner Luminous Petal Ribbon -->
+        <path android:pathData="M 272,475 C 382,530 452,650 481,810 L 442,810 C 402,665 340,565 272,475 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="313.8"
+                    android:startY="475"
+                    android:endX="470.55"
+                    android:endY="810">
+                    <item android:offset="0.0" android:color="#D9A855F7" />
+                    <item android:offset="1.0" android:color="#F2F5D0FE" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 4: Bottom-Left Core Petal -->
+        <path android:pathData="M 190,540 C 318,556 416,664 460,810 L 190,810 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="190"
+                    android:startY="621"
+                    android:endX="433"
+                    android:endY="810">
+                    <item android:offset="0.0" android:color="#4C1D95" />
+                    <item android:offset="1.0" android:color="#5B21B6" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+
+    <!-- 6. RIGHT WING / BOOK CARD WITH CLIP PATH -->
+    <group>
+        <clip-path
+            android:pathData="M 511,810 L 511,678 C 511,554 618,468 775,429 C 789,426 798,435 798,449 L 798,730 C 798,778 766,810 718,810 Z" />
+
+        <!-- Layer 1: Top Arch Base (Vivid Plum-Orchid) -->
+        <path android:pathData="M 505,420 L 805,420 L 805,820 L 505,820 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="745"
+                    android:startY="420"
+                    android:endX="535"
+                    android:endY="820">
+                    <item android:offset="0.0" android:color="#7E22CE" />
+                    <item android:offset="1.0" android:color="#A855F7" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 2: Mid Sweeping Berry-Pink Wave -->
+        <path android:pathData="M 511,810 C 535,645 642,520 805,482 L 805,810 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="775.6"
+                    android:startY="531.2"
+                    android:endX="525.7"
+                    android:endY="810">
+                    <item android:offset="0.0" android:color="#A21CAF" />
+                    <item android:offset="0.60" android:color="#D946EF" />
+                    <item android:offset="1.0" android:color="#F5D0FE" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 3: Lower Sweeping Lilac-Rose Curve -->
+        <path android:pathData="M 544,810 C 582,684 678,596 805,546 L 805,810 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="544"
+                    android:startY="810"
+                    android:endX="805"
+                    android:endY="598.8">
+                    <item android:offset="0.0" android:color="#FBCFE8" />
+                    <item android:offset="0.45" android:color="#E9D5FF" />
+                    <item android:offset="1.0" android:color="#C084FC" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 4: Vertical Tonal Split Overlay -->
+        <path android:pathData="M 616,420 L 806,420 L 806,820 L 616,820 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="711"
+                    android:startY="420"
+                    android:endX="711"
+                    android:endY="820">
+                    <item android:offset="0.0" android:color="#526B21A8" />
+                    <item android:offset="1.0" android:color="#479333EA" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 5: Luminous Crease Highlight -->
+        <path
+            android:fillColor="#47FDF4FF"
+            android:pathData="M 511,810 C 535,645 616,552 616,552 L 616,810 Z" />
+    </group>
+
+    <!-- 7. FLOATING BOTANICAL LEAF -->
+    <!-- Upper Blade -->
+    <path android:pathData="M 510,548 C 512,346 614,248 764,203 C 794,194 814,184 829,174 C 833,202 827,232 812,258 C 748,302 628,386 510,548 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="510"
+                android:startY="548"
+                android:endX="833"
+                android:endY="174">
+                <item android:offset="0.0" android:color="#7C3AED" />
+                <item android:offset="0.55" android:color="#9333EA" />
+                <item android:offset="1.0" android:color="#6D28D9" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Lower Blade -->
+    <path android:pathData="M 829,174 C 844,296 798,398 692,442 C 626,470 576,486 538,510 C 596,434 686,356 766,286 C 796,260 818,220 829,174 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="568.6"
+                android:startY="476.4"
+                android:endX="828.7"
+                android:endY="207.6">
+                <item android:offset="0.0" android:color="#9D174D" />
+                <item android:offset="0.45" android:color="#7E22CE" />
+                <item android:offset="1.0" android:color="#581C87" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Apex Unification Cap -->
+    <path android:pathData="M 758,280 C 792,252 815,214 829,174 C 814,184 794,194 764,203 C 722,216 680,236 644,264 C 688,242 732,232 768,274 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="510"
+                android:startY="548"
+                android:endX="833"
+                android:endY="174">
+                <item android:offset="0.0" android:color="#7C3AED" />
+                <item android:offset="0.55" android:color="#9333EA" />
+                <item android:offset="1.0" android:color="#6D28D9" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

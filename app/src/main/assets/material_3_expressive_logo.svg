@@ -1,0 +1,283 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="100%" height="100%">
+  <title>Material 3 Expressive Botanical Book Logo</title>
+  <desc>A minimal, bright Material 3 Expressive vector redesign featuring tonal violet, orchid, and rose-lilac layered surfaces inside a squircle icon container.</desc>
+
+  <defs>
+    <!-- App Icon Squircle Surface: M3 Surface Bright to Primary Fixed Light -->
+    <linearGradient id="m3-surface-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBFD" />
+      <stop offset="55%" stop-color="#F8F1FF" />
+      <stop offset="100%" stop-color="#EFE3FF" />
+    </linearGradient>
+
+    <!-- Subtle Expressive Ambient Glow in Bottom Corners -->
+    <radialGradient id="m3-ambient-glow" cx="50%" cy="95%" r="65%" fx="50%" fy="95%">
+      <stop offset="0%" stop-color="#E8D0FF" stop-opacity="0.65" />
+      <stop offset="60%" stop-color="#F3E8FF" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#FFFBFD" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Inner Border Highlight for Material 3 Tonal Elevation -->
+    <linearGradient id="m3-squircle-stroke" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#DEC9F6" stop-opacity="0.5" />
+    </linearGradient>
+
+    <!-- Left Wing Base: M3 Primary Vivid Violet -->
+    <linearGradient id="left-wing-base" x1="15%" y1="10%" x2="85%" y2="95%">
+      <stop offset="0%" stop-color="#6D28D9" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+
+    <!-- Left Wing Mid Sweeping Petal: M3 Primary Container Bright Orchid -->
+    <linearGradient id="left-wing-mid-arc" x1="0%" y1="20%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9333EA" />
+      <stop offset="65%" stop-color="#C084FC" />
+      <stop offset="100%" stop-color="#F0ABFC" />
+    </linearGradient>
+
+    <!-- Left Wing Inner Accent Ribbon: Luminous Lavender-Rose Highlight -->
+    <linearGradient id="left-wing-highlight-arc" x1="20%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#F5D0FE" stop-opacity="0.95" />
+    </linearGradient>
+
+    <!-- Left Wing Lower-Left Core: Deep Expressive Indigo-Violet -->
+    <linearGradient id="left-wing-deep-core" x1="0%" y1="30%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#4C1D95" />
+      <stop offset="100%" stop-color="#5B21B6" />
+    </linearGradient>
+
+    <!-- Right Wing Upper Base: M3 Secondary Vivid Plum-Orchid -->
+    <linearGradient id="right-wing-base" x1="80%" y1="0%" x2="10%" y2="100%">
+      <stop offset="0%" stop-color="#7E22CE" />
+      <stop offset="100%" stop-color="#A855F7" />
+    </linearGradient>
+
+    <!-- Right Wing Mid Sweeping Wave: M3 Tertiary Berry-Pink -->
+    <linearGradient id="right-wing-mid-wave" x1="90%" y1="15%" x2="5%" y2="100%">
+      <stop offset="0%" stop-color="#A21CAF" />
+      <stop offset="60%" stop-color="#D946EF" />
+      <stop offset="100%" stop-color="#F5D0FE" />
+    </linearGradient>
+
+    <!-- Right Wing Lower Tonal Surface: Bright Lilac-Rose Container -->
+    <linearGradient id="right-wing-lower-surface" x1="0%" y1="100%" x2="100%" y2="20%">
+      <stop offset="0%" stop-color="#FBCFE8" />
+      <stop offset="45%" stop-color="#E9D5FF" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+
+    <!-- Right Wing Vertical Split Overlay (Right Column Tonal Shift) -->
+    <linearGradient id="right-wing-column-tint" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#6B21A8" stop-opacity="0.32" />
+      <stop offset="100%" stop-color="#9333EA" stop-opacity="0.28" />
+    </linearGradient>
+
+    <!-- Top Leaf Upper Blade: Vibrant Violet to Expressive Magenta -->
+    <linearGradient id="leaf-upper-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="55%" stop-color="#9333EA" />
+      <stop offset="100%" stop-color="#6D28D9" />
+    </linearGradient>
+
+    <!-- Top Leaf Lower Blade: Deep Orchid to Radiant Berry -->
+    <linearGradient id="leaf-lower-grad" x1="10%" y1="90%" x2="95%" y2="10%">
+      <stop offset="0%" stop-color="#9D174D" />
+      <stop offset="45%" stop-color="#7E22CE" />
+      <stop offset="100%" stop-color="#581C87" />
+    </linearGradient>
+
+    <!-- Soft Material 3 Tonal Elevation Shadow for Central Motif -->
+    <filter id="m3-soft-elevation" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#581C87" flood-opacity="0.10" />
+    </filter>
+
+    <!--
+      CLIP PATH 1: Left Page / Wing
+      Matches the original silhouette: rounded top-left tip, straight left edge,
+      generous rounded bottom-left corner, flat bottom to center spine (x=481),
+      vertical inner spine rising to y=600, and sweeping arc back to top-left.
+    -->
+    <clipPath id="clip-left-wing">
+      <path d="
+        M 196,374
+        C 196,360 207,352 221,353
+        C 374,364 481,462 481,605
+        L 481,810
+        L 276,810
+        C 228,810 196,778 196,730
+        Z" />
+    </clipPath>
+
+    <!--
+      CLIP PATH 2: Right Page / Wing
+      Matches the shorter right wing: rounded top-right tip (x=798, y=442),
+      straight right edge, rounded bottom-right corner, flat bottom to spine (x=511),
+      vertical inner spine rising to y=675, and sweeping arc up to top-right.
+    -->
+    <clipPath id="clip-right-wing">
+      <path d="
+        M 511,810
+        L 511,678
+        C 511,554 618,468 775,429
+        C 789,426 798,435 798,449
+        L 798,730
+        C 798,778 766,810 718,810
+        Z" />
+    </clipPath>
+  </defs>
+
+  <g id="Icon-Container">
+    <!-- Main Squircle Base -->
+    <rect
+      x="12"
+      y="12"
+      width="1000"
+      height="1000"
+      rx="228"
+      ry="228"
+      fill="url(#m3-surface-bg)"
+    />
+
+    <!-- Expressive Tonal Glow Overlay -->
+    <rect
+      x="12"
+      y="12"
+      width="1000"
+      height="1000"
+      rx="228"
+      ry="228"
+      fill="url(#m3-ambient-glow)"
+    />
+
+    <!-- Crisp Inner Tonal Stroke -->
+    <rect
+      x="16"
+      y="16"
+      width="992"
+      height="992"
+      rx="224"
+      ry="224"
+      fill="none"
+      stroke="url(#m3-squircle-stroke)"
+      stroke-width="6"
+    />
+  </g>
+
+  <g id="Logo-Mark" filter="url(#m3-soft-elevation)">
+    <g id="Left-Wing" clip-path="url(#clip-left-wing)">
+      <!-- Layer 1: Upper-Right Outer Arch (Vivid Violet Base) -->
+      <rect x="190" y="345" width="300" height="475" fill="url(#left-wing-base)" />
+
+      <!-- Layer 2: Mid Sweeping Tonal Band (Orchid-Lavender Curve) -->
+      <path
+        d="M 190,468
+           C 325,468 438,585 481,810
+           L 190,810 Z"
+        fill="url(#left-wing-mid-arc)"
+      />
+
+      <!-- Layer 3: Inner Luminous Petal Ribbon (Creates the glowing crease near spine) -->
+      <path
+        d="M 272,475
+           C 382,530 452,650 481,810
+           L 442,810
+           C 402,665 340,565 272,475 Z"
+        fill="url(#left-wing-highlight-arc)"
+      />
+
+      <!-- Layer 4: Bottom-Left Core Petal (Deep Expressive Indigo-Violet) -->
+      <path
+        d="M 190,540
+           C 318,556 416,664 460,810
+           L 190,810 Z"
+        fill="url(#left-wing-deep-core)"
+      />
+    </g>
+
+    <g id="Right-Wing" clip-path="url(#clip-right-wing)">
+      <!-- Layer 1: Top Arch Base (Vivid Plum-Orchid) -->
+      <rect x="505" y="420" width="300" height="400" fill="url(#right-wing-base)" />
+
+      <!-- Layer 2: Mid Sweeping Berry-Pink Wave -->
+      <path
+        d="M 511,810
+           C 535,645 642,520 805,482
+           L 805,810 Z"
+        fill="url(#right-wing-mid-wave)"
+      />
+
+      <!-- Layer 3: Lower Sweeping Bright Lilac-Rose Curve -->
+      <path
+        d="M 544,810
+           C 582,684 678,596 805,546
+           L 805,810 Z"
+        fill="url(#right-wing-lower-surface)"
+      />
+
+      <!-- Layer 4: Signature Vertical Tonal Split (x=616 rightwards) for M3 Expressive Depth -->
+      <rect
+        x="616"
+        y="420"
+        width="190"
+        height="400"
+        fill="url(#right-wing-column-tint)"
+      />
+
+      <!-- Layer 5: Crisp Luminous Tonal Crease Highlight on Left Spine Edge -->
+      <path
+        d="M 511,810
+           C 535,645 616,552 616,552
+           L 616,810 Z"
+        fill="#FDF4FF"
+        fill-opacity="0.28"
+      />
+    </g>
+
+    <g id="Floating-Leaf">
+      <!--
+        Upper-Left Leaf Blade:
+        Sweeps from the central spine stem (510, 548) high up to the expressive
+        upturned tip (829, 174), separated from the lower blade by a clean M3 negative-space vein.
+      -->
+      <path
+        d="M 510,548
+           C 512,346 614,248 764,203
+           C 794,194 814,184 829,174
+           C 833,202 827,232 812,258
+           C 748,302 628,386 510,548 Z"
+        fill="url(#leaf-upper-grad)"
+      />
+
+      <!--
+        Lower-Right Leaf Blade & Unified Tip:
+        Forms the full, organic outer silhouette of the leaf from the apex (829, 174)
+        down to the inner base corner above the right page (538, 510), leaving a tapered
+        bright negative-space central vein between the two blades.
+      -->
+      <path
+        d="M 829,174
+           C 844,296 798,398 692,442
+           C 626,470 576,486 538,510
+           C 596,434 686,356 766,286
+           C 796,260 818,220 829,174 Z"
+        fill="url(#leaf-lower-grad)"
+      />
+
+      <!--
+        Outer Apex Unification Cap:
+        Joins the upper and lower blades seamlessly at the upper-right leaf tip
+        so the negative-space vein tapers organically inside the leaf at (768, 276).
+      -->
+      <path
+        d="M 758,280
+           C 792,252 815,214 829,174
+           C 814,184 794,194 764,203
+           C 722,216 680,236 644,264
+           C 688,242 732,232 768,274 Z"
+        fill="url(#leaf-upper-grad)"
+      />
+    </g>
+  </g>
+</svg>

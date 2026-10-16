@@ -4,6 +4,7 @@ package com.example.ui.screens
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import com.mulberry.app.analytics.MulberryAnalytics
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -205,6 +206,7 @@ fun LibraryScreen(
     var selectedSubject by remember { mutableStateOf("All") }
     var selectedBookId by remember { mutableStateOf<String?>(null) }
     var expandedCategory by remember { mutableStateOf<String?>(null) }
+    var showProfileModal by remember { mutableStateOf(false) }
 
     val bookSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -266,6 +268,17 @@ fun LibraryScreen(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(searchQuery) {
+        val trimmed = searchQuery.trim()
+        if (trimmed.length >= 2) {
+            kotlinx.coroutines.delay(600)
+            MulberryAnalytics.logSearch(
+                query = trimmed,
+                resultsCount = filteredBooks.size
+            )
+        }
+    }
+
     // Group filtered books according to the 5 official catalog types
     val categoryRows = remember(filteredBooks) {
         OFFICIAL_CATALOG_TYPES.mapNotNull { type ->
@@ -314,6 +327,8 @@ fun LibraryScreen(
                     ) {
                         LibraryMainShelfContent(
                             colors = colors,
+                            userProfile = userProfile,
+                            onProfileClick = { showProfileModal = true },
                             searchQuery = searchQuery,
                             onSearchQueryChange = { searchQuery = it },
                             selectedProf = selectedProf,
@@ -455,6 +470,8 @@ fun LibraryScreen(
                     ) {
                         LibraryMainShelfContent(
                             colors = colors,
+                            userProfile = userProfile,
+                            onProfileClick = { showProfileModal = true },
                             searchQuery = searchQuery,
                             onSearchQueryChange = { searchQuery = it },
                             selectedProf = selectedProf,
@@ -519,6 +536,16 @@ fun LibraryScreen(
             )
         }
     }
+
+    if (showProfileModal) {
+        UserProfileBottomSheet(
+            userProfile = userProfile,
+            onDismissRequest = { showProfileModal = false },
+            onSaveProfile = { updated ->
+                viewModel.saveUserProfile(updated)
+            }
+        )
+    }
 }
 
 /**
@@ -527,6 +554,8 @@ fun LibraryScreen(
 @Composable
 private fun LibraryMainShelfContent(
     colors: com.example.ui.theme.MulberryColors,
+    userProfile: com.example.data.model.UserProfile,
+    onProfileClick: () -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     selectedProf: ProfCurriculum,
@@ -540,7 +569,7 @@ private fun LibraryMainShelfContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // 1. TOP HEADER ("Mulberry Shelf")
+        // 1. TOP HEADER ("Mulberry Shelf") with Expressive Logo & Profile Avatar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -548,15 +577,38 @@ private fun LibraryMainShelfContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Mulberry Shelf",
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                color = colors.textPrimary,
-                letterSpacing = (-0.5).sp,
-                modifier = Modifier.testTag("mulberry_shelf_title")
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.example.ui.components.MulberryExpressiveLogo(size = 32.dp, showContainer = false)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Mulberry Shelf",
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 28.sp,
+                    color = colors.textPrimary,
+                    letterSpacing = (-0.5).sp,
+                    modifier = Modifier.testTag("mulberry_shelf_title")
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.primary.copy(alpha = 0.12f))
+                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .clickable { onProfileClick() }
+                    .testTag("library_profile_avatar_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = getInitials(userProfile.displayName),
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = colors.primary
+                )
+            }
         }
 
         // 2. FULL-WIDTH SEARCH BAR ROW
@@ -1564,5 +1616,16 @@ private fun CompactBookDetailBottomSheetContent(
                 color = colors.textSecondary
             )
         }
+    }
+}
+
+private fun getInitials(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "M"
+    val parts = trimmed.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+    return if (parts.size >= 2) {
+        "${parts[0].first().uppercaseChar()}${parts[1].first().uppercaseChar()}"
+    } else {
+        trimmed.take(2).uppercase()
     }
 }

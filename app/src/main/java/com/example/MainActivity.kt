@@ -3,6 +3,7 @@
 package com.example
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -57,6 +58,7 @@ import com.example.ui.screens.desk.DeskRootScreen
 import com.example.ui.theme.MulberryTheme
 import com.example.util.PermissionUtils
 import com.example.viewmodel.MulberryViewModel
+import com.mulberry.app.analytics.MulberryAnalytics
 import com.example.BuildConfig
 import com.example.ui.components.CustomizeTabsSheet
 import com.example.ui.components.UpdateBottomSheet
@@ -73,6 +75,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MulberryViewModel by viewModels()
+    private val settingsViewModel: com.example.viewmodel.SettingsViewModel by viewModels()
 
     private val manageStorageLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -101,31 +104,62 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             val context = LocalContext.current
 
+            val onboardingPrefs = remember {
+                context.getSharedPreferences("mulberry_onboarding", Context.MODE_PRIVATE)
+            }
+            var hasCompletedOnboarding by remember {
+                mutableStateOf(onboardingPrefs.getBoolean("has_completed_onboarding", false))
+            }
+
             var permissionsGranted by remember {
                 mutableStateOf(PermissionUtils.areAllRequiredPermissionsGranted(context))
             }
 
-            // Continuously listen to resume events so if user grants permissions outside the app, UI updates immediately
-            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-                permissionsGranted = PermissionUtils.areAllRequiredPermissionsGranted(context)
+            LaunchedEffect(Unit) {
+                MulberryAnalytics.logAppOpen(themeMode.title)
             }
 
-            MulberryTheme(themeMode = themeMode) {
-                AnimatedContent(
-                    targetState = permissionsGranted,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-                    },
-                    label = "PermissionGateTransition"
-                ) { granted ->
-                    if (granted) {
-                        MulberryApp(viewModel = viewModel)
-                    } else {
-                        PermissionGatewayScreen(
-                            onAllPermissionsGranted = {
-                                permissionsGranted = true
-                            }
-                        )
+            // Continuously listen to resume events so if user grants permissions outside the app, UI updates immediately
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                val granted = PermissionUtils.areAllRequiredPermissionsGranted(context)
+                if (granted && !permissionsGranted) {
+                    settingsViewModel.syncLocalProfile()
+                }
+                permissionsGranted = granted
+            }
+
+            androidx.compose.runtime.LaunchedEffect(permissionsGranted) {
+                if (permissionsGranted) {
+                    settingsViewModel.syncLocalProfile()
+                }
+            }
+
+            if (!hasCompletedOnboarding) {
+                com.example.ui.screens.wizard.SetupWizardScreen(
+                    viewModel = viewModel,
+                    settingsViewModel = settingsViewModel,
+                    onFinish = {
+                        hasCompletedOnboarding = true
+                    }
+                )
+            } else {
+                MulberryTheme(themeMode = themeMode) {
+                    AnimatedContent(
+                        targetState = permissionsGranted,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                        },
+                        label = "PermissionGateTransition"
+                    ) { granted ->
+                        if (granted) {
+                            MulberryApp(viewModel = viewModel)
+                        } else {
+                            PermissionGatewayScreen(
+                                onAllPermissionsGranted = {
+                                    permissionsGranted = true
+                                }
+                            )
+                        }
                     }
                 }
             }

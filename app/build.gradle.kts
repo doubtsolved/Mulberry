@@ -119,6 +119,7 @@ dependencies {
   implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.3")
   implementation("com.tom-roush:pdfbox-android:2.0.27.0")
   implementation("com.google.code.gson:gson:2.11.0")
+  implementation("com.github.aptabase:aptabase-kotlin:0.1.0")
 
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)

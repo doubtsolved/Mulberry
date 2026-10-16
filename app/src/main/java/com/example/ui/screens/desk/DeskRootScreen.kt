@@ -23,6 +23,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.data.model.UserProfile
 import com.example.ui.screens.OFFICIAL_CATALOG_TYPES
 import com.example.ui.screens.matchesCatalogType
 import androidx.compose.foundation.layout.Arrangement
@@ -135,6 +136,10 @@ fun DeskRootScreen(
     var showGoalSheet by remember { mutableStateOf(false) }
     val goalSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val userProfileRepo = remember { com.example.data.repository.UserProfileRepository.getInstance(context) }
+    val userProfile by userProfileRepo.userProfile.collectAsState()
+    var showProfileModal by remember { mutableStateOf(false) }
+
     // Shelf long-press actions bottom sheet state
     var selectedShelfBook by remember { mutableStateOf<BookEntity?>(null) }
     var bookPendingDelete by remember { mutableStateOf<BookEntity?>(null) }
@@ -225,9 +230,13 @@ fun DeskRootScreen(
             // CLEAN TOP BAR: Single clean title "Desk" + Schedule Action Pill "[ + Plan Goal ]"
             DeskTopAppBar(
                 isRefreshing = isRefreshing,
+                userProfile = userProfile,
                 onPlanGoalClick = {
                     sessionToEdit = null
                     showCreateSheet = true
+                },
+                onProfileClick = {
+                    showProfileModal = true
                 },
                 onRefresh = {
                     if (!isRefreshing) {
@@ -814,12 +823,26 @@ fun DeskRootScreen(
             }
         )
     }
+
+    if (showProfileModal) {
+        com.example.ui.screens.UserProfileBottomSheet(
+            userProfile = userProfile,
+            onDismissRequest = { showProfileModal = false },
+            onSaveProfile = { updated ->
+                coroutineScope.launch {
+                    userProfileRepo.updateProfile(updated)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun DeskTopAppBar(
     isRefreshing: Boolean,
+    userProfile: UserProfile,
     onPlanGoalClick: () -> Unit,
+    onProfileClick: () -> Unit,
     onRefresh: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
@@ -843,16 +866,20 @@ private fun DeskTopAppBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Desk",
-            fontFamily = PoppinsFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 28.sp,
-            color = colors.textPrimary,
-            letterSpacing = (-0.5).sp
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            com.example.ui.components.MulberryExpressiveLogo(size = 32.dp, showContainer = false)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Desk",
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                color = colors.textPrimary,
+                letterSpacing = (-0.5).sp
+            )
+        }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Schedule Action Pill: [ + Plan Goal ]
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -864,19 +891,19 @@ private fun DeskTopAppBar(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
                     Icon(
                         imageVector = FluentIcons.CalendarAdd24Regular,
                         contentDescription = "Plan Goal",
                         tint = colors.onPrimary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = "+ Plan Goal",
                         fontFamily = PoppinsFamily,
-                        fontSize = 13.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.onPrimary
                     )
@@ -887,7 +914,7 @@ private fun DeskTopAppBar(
                 onClick = onRefresh,
                 enabled = !isRefreshing,
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(36.dp)
                     .testTag("btn_refresh_desk")
             ) {
                 Icon(
@@ -895,11 +922,42 @@ private fun DeskTopAppBar(
                     contentDescription = "Refresh Schedule",
                     tint = if (isRefreshing) colors.primary else colors.textPrimary,
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(18.dp)
                         .then(if (isRefreshing) Modifier.rotate(rotationAngle) else Modifier)
                 )
             }
+
+            // Top Bar Profile Avatar
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.primary.copy(alpha = 0.12f))
+                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .clickable { onProfileClick() }
+                    .testTag("desk_profile_avatar_button"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = getInitials(userProfile.displayName),
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = colors.primary
+                )
+            }
         }
+    }
+}
+
+private fun getInitials(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "M"
+    val parts = trimmed.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+    return if (parts.size >= 2) {
+        "${parts[0].first().uppercaseChar()}${parts[1].first().uppercaseChar()}"
+    } else {
+        trimmed.take(2).uppercase()
     }
 }
 

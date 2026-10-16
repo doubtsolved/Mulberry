@@ -72,8 +72,9 @@ class ScheduleRepositoryTest {
 
         repository.addSession(session)
 
-        val scheduleFile = File(mockVaultDir, ".mulberry/schedule.json")
-        assertTrue("schedule.json must exist in .mulberry folder", scheduleFile.exists())
+        val scheduleFile = File(mockVaultDir, ".schedule/schedule.json")
+        val legacyScheduleFile = File(mockVaultDir, ".mulberry/schedule.json")
+        assertTrue("schedule.json must exist in vault", scheduleFile.exists() || legacyScheduleFile.exists())
 
         val reloaded = repository.loadSchedule()
         assertEquals(1, reloaded.sessions.size)

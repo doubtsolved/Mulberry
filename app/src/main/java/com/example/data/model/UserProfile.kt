@@ -6,5 +6,6 @@ data class UserProfile(
     val targetExamOrSubject: String = "MBBS 1st Year",
     val institution: String = "",
     val dailyPageGoal: Int = 20,
-    val selectedProf: String = "1st Prof"
+    val selectedProf: String = "1st Prof",
+    val lastUpdated: Long = System.currentTimeMillis()
 )

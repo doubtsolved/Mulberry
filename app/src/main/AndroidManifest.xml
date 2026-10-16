@@ -45,6 +45,7 @@
     </queries>
 
     <application
+        android:name=".MulberryApp"
         android:largeHeap="true"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"

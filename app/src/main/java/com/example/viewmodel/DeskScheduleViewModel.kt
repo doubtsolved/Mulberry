@@ -10,6 +10,7 @@ import com.example.viewmodel.rootPath
 import com.example.data.schedule.ScheduleRepository
 import com.example.data.schedule.model.ReadingSession
 import com.example.data.schedule.model.ScheduleVaultFile
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -216,6 +217,11 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
         )
         viewModelScope.launch {
             scheduleRepo.addSession(session)
+            MulberryAnalytics.logStudyGoalCreated(
+                subject = book.subject.ifEmpty { "General" },
+                chapter = book.title,
+                pageCount = (endPage - startPage + 1).coerceAtLeast(1)
+            )
             // Persist progress to /sdcard/Mulberry/.schedule/reading_progress.json
             runCatching {
                 com.example.util.MulberryStorageManager.recordReadingProgress(
@@ -239,6 +245,10 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
             val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
             if (session != null) {
                 val book = downloadedBooks.value.find { it.title == session.bookTitle }
+                MulberryAnalytics.logStudyGoalCompleted(
+                    subject = book?.subject?.ifEmpty { "General" } ?: "General",
+                    chapter = session.bookTitle
+                )
                 if (book != null) {
                     com.example.util.MulberryStorageManager.recordReadingProgress(
                         context = app,
@@ -256,6 +266,12 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
             val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
             if (session != null) {
                 val book = downloadedBooks.value.find { it.title == session.bookTitle }
+                if (session.isCompleted) {
+                    MulberryAnalytics.logStudyGoalCompleted(
+                        subject = book?.subject?.ifEmpty { "General" } ?: "General",
+                        chapter = session.bookTitle
+                    )
+                }
                 if (book != null) {
                     val targetPage = if (session.isCompleted) session.endPage else session.startPage
                     com.example.util.MulberryStorageManager.recordReadingProgress(

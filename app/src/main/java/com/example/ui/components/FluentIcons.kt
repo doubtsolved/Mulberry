@@ -2335,6 +2335,218 @@ object FluentIcons {
             lineTo(10f, 20f)
         }
     }.build()
+
+    // Person24Regular
+    val Person24Regular: ImageVector = ImageVector.Builder(
+        name = "Person24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Head circle
+            moveTo(12f, 12f)
+            curveTo(14.21f, 12f, 16f, 10.21f, 16f, 8f)
+            curveTo(16f, 5.79f, 14.21f, 4f, 12f, 4f)
+            curveTo(9.79f, 4f, 8f, 5.79f, 8f, 8f)
+            curveTo(8f, 10.21f, 9.79f, 12f, 12f, 12f)
+            close()
+            // Body curve
+            moveTo(5f, 20f)
+            curveTo(5f, 16.69f, 8.13f, 14f, 12f, 14f)
+            curveTo(15.87f, 14f, 19f, 16.69f, 19f, 20f)
+        }
+    }.build()
+
+    // Person24Filled
+    val Person24Filled: ImageVector = ImageVector.Builder(
+        name = "Person24Filled",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12f, 12f)
+            curveTo(14.21f, 12f, 16f, 10.21f, 16f, 8f)
+            curveTo(16f, 5.79f, 14.21f, 4f, 12f, 4f)
+            curveTo(9.79f, 4f, 8f, 5.79f, 8f, 8f)
+            curveTo(8f, 10.21f, 9.79f, 12f, 12f, 12f)
+            close()
+            moveTo(12f, 14f)
+            curveTo(7.58f, 14f, 4f, 16.69f, 4f, 20f)
+            curveTo(4f, 20.55f, 4.45f, 21f, 5f, 21f)
+            horizontalLineTo(19f)
+            curveTo(19.55f, 21f, 20f, 20.55f, 20f, 20f)
+            curveTo(20f, 16.69f, 16.42f, 14f, 12f, 14f)
+            close()
+        }
+    }.build()
+
+    // HatGraduation24Regular
+    val HatGraduation24Regular: ImageVector = ImageVector.Builder(
+        name = "HatGraduation24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Cap diamond
+            moveTo(12f, 4f)
+            lineTo(22f, 9f)
+            lineTo(12f, 14f)
+            lineTo(2f, 9f)
+            close()
+            // Lower skullcap
+            moveTo(6f, 11.25f)
+            verticalLineTo(15.5f)
+            curveTo(6f, 17.5f, 8.69f, 19.5f, 12f, 19.5f)
+            curveTo(15.31f, 19.5f, 18f, 17.5f, 18f, 15.5f)
+            verticalLineTo(11.25f)
+            // Tassel
+            moveTo(22f, 9f)
+            verticalLineTo(17f)
+        }
+    }.build()
+
+    // Building24Regular
+    val Building24Regular: ImageVector = ImageVector.Builder(
+        name = "Building24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(4f, 21f)
+            horizontalLineTo(20f)
+            moveTo(6f, 21f)
+            verticalLineTo(4f)
+            curveTo(6f, 3.45f, 6.45f, 3f, 7f, 3f)
+            horizontalLineTo(17f)
+            curveTo(17.55f, 3f, 18f, 3.45f, 18f, 4f)
+            verticalLineTo(21f)
+            // Windows
+            moveTo(9f, 7f)
+            horizontalLineTo(11f)
+            moveTo(13f, 7f)
+            horizontalLineTo(15f)
+            moveTo(9f, 11f)
+            horizontalLineTo(11f)
+            moveTo(13f, 11f)
+            horizontalLineTo(15f)
+            moveTo(9f, 15f)
+            horizontalLineTo(11f)
+            moveTo(13f, 15f)
+            horizontalLineTo(15f)
+        }
+    }.build()
+
+    // Save24Regular
+    val Save24Regular: ImageVector = ImageVector.Builder(
+        name = "Save24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(5f, 3f)
+            horizontalLineTo(16.5f)
+            lineTo(20f, 6.5f)
+            verticalLineTo(19f)
+            curveTo(20f, 20.1f, 19.1f, 21f, 18f, 21f)
+            horizontalLineTo(6f)
+            curveTo(4.9f, 21f, 4f, 20.1f, 4f, 19f)
+            verticalLineTo(4f)
+            curveTo(4f, 2.9f, 4.9f, 3f, 5f, 3f)
+            close()
+            moveTo(7f, 3f)
+            verticalLineTo(8f)
+            horizontalLineTo(15f)
+            verticalLineTo(3f)
+            moveTo(7f, 14f)
+            horizontalLineTo(17f)
+            verticalLineTo(21f)
+            horizontalLineTo(7f)
+            close()
+        }
+    }.build()
+
+    // Heart24Regular
+    val Heart24Regular: ImageVector = ImageVector.Builder(
+        name = "Heart24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(12f, 21f)
+            curveTo(12f, 21f, 3.5f, 15.5f, 3.5f, 9.5f)
+            curveTo(3.5f, 6.5f, 5.8f, 4.5f, 8.5f, 4.5f)
+            curveTo(10.2f, 4.5f, 11.5f, 5.5f, 12f, 6.5f)
+            curveTo(12.5f, 5.5f, 13.8f, 4.5f, 15.5f, 4.5f)
+            curveTo(18.2f, 4.5f, 20.5f, 6.5f, 20.5f, 9.5f)
+            curveTo(20.5f, 15.5f, 12f, 21f, 12f, 21f)
+            close()
+        }
+    }.build()
+
+    // Send24Regular (Telegram / Messaging)
+    val Send24Regular: ImageVector = ImageVector.Builder(
+        name = "Send24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(21.4f, 2.6f)
+            lineTo(3.2f, 10.8f)
+            curveTo(2.3f, 11.2f, 2.4f, 12.5f, 3.3f, 12.8f)
+            lineTo(9.5f, 14.8f)
+            lineTo(11.5f, 21f)
+            curveTo(11.8f, 21.9f, 13.1f, 22f, 13.5f, 21.1f)
+            lineTo(21.7f, 2.9f)
+            curveTo(22f, 2.2f, 21.3f, 1.5f, 20.6f, 1.8f)
+            close()
+            moveTo(9.5f, 14.8f)
+            lineTo(21.4f, 2.6f)
+        }
+    }.build()
 }
 
 

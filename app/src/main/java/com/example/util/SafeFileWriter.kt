@@ -13,7 +13,15 @@ object SafeFileWriter {
     fun writeAtomically(targetFile: File, content: String): Boolean {
         val parent = targetFile.parentFile ?: return false
         if (!parent.exists()) {
-            parent.mkdirs()
+            val created = parent.mkdirs()
+            if (!created && !parent.exists()) {
+                Log.d(TAG, "Parent directory does not exist and cannot be created: ${parent.absolutePath}")
+                return false
+            }
+        }
+        if (!parent.isDirectory) {
+            Log.d(TAG, "Parent path is not a directory: ${parent.absolutePath}")
+            return false
         }
 
         // Clean up legacy .new or .bak left behind by Android's AtomicFile
@@ -70,14 +78,17 @@ object SafeFileWriter {
             tempFile.delete()
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Error writing atomically to ${targetFile.absolutePath}: ${e.message}")
-            try {
-                targetFile.writeText(content, Charsets.UTF_8)
-                return true
-            } catch (ex: Exception) {
-                Log.e(TAG, "Fallback direct write failed: ${ex.message}")
-                return false
+            Log.w(TAG, "Failed atomic write to ${targetFile.absolutePath}: ${e.message}")
+            if (parent.exists() && parent.isDirectory) {
+                try {
+                    targetFile.writeText(content, Charsets.UTF_8)
+                    return true
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Fallback direct write failed: ${ex.message}")
+                    return false
+                }
             }
+            return false
         } finally {
             if (tempFile.exists()) {
                 try { tempFile.delete() } catch (_: Exception) {}

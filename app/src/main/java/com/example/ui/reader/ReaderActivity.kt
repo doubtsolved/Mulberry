@@ -13,6 +13,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.mulberry.app.analytics.MulberryAnalytics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -136,6 +137,9 @@ class ReaderActivity : AppCompatActivity() {
     private var sessionId: String? = null
     private var sessionStartPage: Int = -1
     private var maxPageReached: Int = 1
+    private var sessionStartTimeMs: Long = 0L
+    private var initialOpenedPage: Int = 1
+    private var hasLoggedSessionCompleted: Boolean = false
 
     private val readerLoadState = mutableStateOf<ReaderLoadState>(ReaderLoadState.Loading)
     private var prepareJob: Job? = null
@@ -392,6 +396,14 @@ class ReaderActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     totalPagesState.intValue = detectedPageCount
                     readerLoadState.value = ReaderLoadState.Ready
+                    sessionStartTimeMs = System.currentTimeMillis()
+                    initialOpenedPage = currentSinglePage.intValue + 1
+                    MulberryAnalytics.logBookOpened(
+                        bookId = if (bookId != -1) bookId.toString() else (bookTitle.ifEmpty { "unknown_book" }),
+                        bookTitle = bookTitle.ifEmpty { "Medical Textbook" },
+                        subject = "Medical",
+                        page = currentSinglePage.intValue + 1
+                    )
                     setupComposeTopBar()
                 }
 
@@ -886,7 +898,20 @@ class ReaderActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    private fun logReadingSessionIfNeeded() {
+        if (hasLoggedSessionCompleted || sessionStartTimeMs <= 0L) return
+        hasLoggedSessionCompleted = true
+        val durationSeconds = ((System.currentTimeMillis() - sessionStartTimeMs) / 1000).coerceAtLeast(0)
+        val pagesRead = (maxPageReached - initialOpenedPage + 1).coerceAtLeast(1)
+        MulberryAnalytics.logBookSessionCompleted(
+            bookId = if (bookId != -1) bookId.toString() else (bookTitle.ifEmpty { "unknown_book" }),
+            durationSeconds = durationSeconds,
+            pagesRead = pagesRead
+        )
+    }
+
     override fun onDestroy() {
+        logReadingSessionIfNeeded()
         prepareJob?.cancel()
         thumbnailManager?.clearMemory()
         ephemeralPdfFile?.let {

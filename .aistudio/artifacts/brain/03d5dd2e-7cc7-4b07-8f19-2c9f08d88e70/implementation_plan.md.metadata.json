@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for adding subtle, fluid translation and fade animations to category expansion across both large-screen dual-pane and mobile phone layouts.",
-  "updatedAt": "2026-10-15T19:27:33.813355587Z",
+  "summary": "Implementation plan for integrating background, privacy-preserving Aptabase telemetry using the official aptabase-kotlin SDK with zero UI footprint, Application cold-start initialization, reading session tracking, and lifecycle event dispatches.",
+  "updatedAt": "2026-10-16T11:05:33.988684965Z",
   "requestFeedback": true,
   "userFacing": true
 }

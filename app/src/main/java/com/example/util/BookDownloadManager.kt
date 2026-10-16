@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.data.dao.BookDao
 import com.example.data.model.BookEntity
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -132,6 +133,13 @@ class BookDownloadManager private constructor(
 
             val body = response.body ?: throw IOException("Empty response body")
             val contentLength = body.contentLength()
+            val sizeMb = if (contentLength > 0) (contentLength / (1024.0 * 1024.0)) else 0.0
+            MulberryAnalytics.logBookDownloadStarted(
+                bookId = targetSlug,
+                bookTitle = book.title,
+                subject = book.subject,
+                sizeMb = sizeMb
+            )
 
             body.byteStream().use { input ->
                 FileOutputStream(tempBinFile).use { output ->
@@ -187,6 +195,11 @@ class BookDownloadManager private constructor(
             )
 
             _downloadState.value = DownloadProgressState.Completed(targetSlug, targetBinFile.absolutePath)
+            MulberryAnalytics.logBookDownloadCompleted(
+                bookId = targetSlug,
+                bookTitle = book.title,
+                subject = book.subject
+            )
             true
         } catch (e: CancellationException) {
             Log.d(TAG, "Download job gracefully cancelled for $targetSlug")

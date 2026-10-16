@@ -21,6 +21,7 @@ import com.example.util.DownloadState
 import com.example.util.ReleaseInfo
 import com.example.util.UpdateCheckResult
 import com.example.util.UpdateManager
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,8 +50,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val userProfile: StateFlow<UserProfile> = userProfileRepo.userProfile
 
     fun saveProfile(updated: UserProfile, activeVaultPath: String? = null) {
+        val oldProfile = userProfile.value
         viewModelScope.launch {
             userProfileRepo.updateProfile(updated, activeVaultPath)
+            MulberryAnalytics.setUserContext(
+                name = updated.displayName,
+                college = updated.institution,
+                prof = updated.selectedProf
+            )
+            if (oldProfile.selectedProf != updated.selectedProf) {
+                MulberryAnalytics.logProfPhaseChanged(
+                    oldProf = oldProfile.selectedProf,
+                    newProf = updated.selectedProf
+                )
+            }
+        }
+    }
+
+    fun syncLocalProfile() {
+        viewModelScope.launch {
+            userProfileRepo.syncProfileToLocalDisk(userProfile.value)
         }
     }
 

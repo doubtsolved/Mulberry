@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
@@ -13,6 +14,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -89,6 +93,7 @@ import com.example.util.StorageMetricsHelper
 import com.example.viewmodel.rootPath
 import com.example.data.model.VaultEntity
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.MulberryExpressiveLogo
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.MulberryTheme
@@ -113,7 +118,9 @@ enum class ActiveSettingsSheet {
     READING_MODE,
     DATA_PORTABILITY,
     STORAGE_CACHE,
-    ABOUT
+    ABOUT,
+    CONTRIBUTE,
+    DEVELOPER_INFO
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -272,69 +279,41 @@ fun SettingsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = "${userProfile.academicRole} • ${userProfile.targetExamOrSubject}",
-                            fontFamily = InterFamily,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp,
-                            color = colors.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (userProfile.institution.isNotBlank()) {
+                            Text(
+                                text = userProfile.institution,
+                                fontFamily = InterFamily,
+                                fontWeight = FontWeight.Normal,
+                                fontSize = 12.5.sp,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
 
-                        Row(
-                            modifier = Modifier.padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = colors.primary.copy(alpha = 0.14f),
+                            modifier = Modifier.padding(top = 2.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = colors.primary.copy(alpha = 0.14f)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = FluentIcons.Bookmark24Regular,
-                                        contentDescription = null,
-                                        tint = colors.primary,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = activeCurriculum.shortName,
-                                        fontFamily = InterFamily,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 11.sp,
-                                        color = colors.primary
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = colors.surfaceTint.copy(alpha = 0.35f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = FluentIcons.Target24Regular,
-                                        contentDescription = null,
-                                        tint = colors.textSecondary,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "${userProfile.dailyPageGoal} p/d",
-                                        fontFamily = InterFamily,
-                                        fontWeight = FontWeight.Normal,
-                                        fontSize = 11.sp,
-                                        color = colors.textSecondary
-                                    )
-                                }
+                                Icon(
+                                    imageVector = FluentIcons.Bookmark24Regular,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = activeCurriculum.title,
+                                    fontFamily = InterFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp,
+                                    color = colors.primary
+                                )
                             }
                         }
                     }
@@ -349,31 +328,9 @@ fun SettingsScreen(
                 }
             }
 
-            // GROUP 1: VAULTS & SYNC
+            // APPEARANCE & NAVIGATION
             SettingsCategoryGroup(
-                title = "VAULTS & SYNC",
-                titleColor = colors.primary
-            ) {
-                SettingsItemRow(
-                    icon = FluentIcons.Folder24Filled,
-                    title = "Storage Vaults",
-                    valueLabel = "${vaults.size} Vaults Linked",
-                    iconTint = getSemanticIconTint(SemanticColors.Folder, iconStyle),
-                    onClick = { activeSheet = ActiveSettingsSheet.VAULTS }
-                )
-                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
-                SettingsItemRow(
-                    icon = FluentIcons.Clock24Regular,
-                    title = "Sync & Scan",
-                    valueLabel = "Automatic (On Resume)",
-                    iconTint = getSemanticIconTint(SemanticColors.Sync, iconStyle),
-                    onClick = { activeSheet = ActiveSettingsSheet.SYNC_OPTIONS }
-                )
-            }
-
-            // GROUP 2: READING & APPEARANCE
-            SettingsCategoryGroup(
-                title = "READING & APPEARANCE",
+                title = "APPEARANCE & NAVIGATION",
                 titleColor = colors.primary
             ) {
                 SettingsItemRow(
@@ -381,13 +338,6 @@ fun SettingsScreen(
                     title = "Theme & Palette",
                     valueLabel = "${currentTheme.title} • ${if (iconStyle == IconStyle.VIBRANT) "Vibrant" else "Adaptive"}",
                     onClick = { activeSheet = ActiveSettingsSheet.THEME }
-                )
-                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
-                SettingsItemRow(
-                    icon = FluentIcons.BookOpen24Regular,
-                    title = "Reading Preferences",
-                    valueLabel = if (isPageFlipAnimationEnabled) "Animation On" else "Animation Off",
-                    onClick = { activeSheet = ActiveSettingsSheet.READING_MODE }
                 )
                 HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
                 SettingsItemRow(
@@ -399,82 +349,25 @@ fun SettingsScreen(
                 )
             }
 
-            // GROUP 3: DATA & STORAGE
-            val downloadedBooksList by viewModel.downloadedBooks.collectAsState()
-            val downloadedBooksCount = downloadedBooksList.size
-            val downloadedStorageMb = (viewModel.downloadManager.getTotalVaultStorageBytes() / (1024.0 * 1024.0))
-            val formattedStorage = if (downloadedStorageMb > 0) String.format(Locale.getDefault(), "%.1f MB", downloadedStorageMb) else "${StorageMetricsHelper.formatFileSize(context, cacheSizeBytes)}"
-
+            // COMMUNITY & ABOUT
             SettingsCategoryGroup(
-                title = "STORAGE",
+                title = "COMMUNITY & ABOUT",
                 titleColor = colors.primary
             ) {
-                // User-friendly storage tile: "Offline Storage: X MB (Y Books Downloaded)"
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = colors.surfaceCard,
-                    border = BorderStroke(0.5.dp, colors.borderSubtle),
-                    modifier = Modifier.fillMaxWidth().testTag("offline_storage_tile")
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "Offline Storage: $formattedStorage",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "($downloadedBooksCount Books Downloaded)",
-                                fontFamily = InterFamily,
-                                fontSize = 13.sp,
-                                color = colors.textSecondary
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                settingsViewModel.clearCache {
-                                    Toast.makeText(context, "Temp cache cleared", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.primary.copy(alpha = 0.12f),
-                                contentColor = colors.primary
-                            ),
-                            modifier = Modifier.fillMaxWidth().height(40.dp)
-                        ) {
-                            Text(
-                                text = "Clear Temp Cache",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
-
                 SettingsItemRow(
-                    icon = FluentIcons.LibrarySpines24Regular,
-                    title = "Data Portability (.zip)",
-                    valueLabel = "Active",
-                    iconTint = getSemanticIconTint(SemanticColors.Pdf, iconStyle),
-                    onClick = { activeSheet = ActiveSettingsSheet.DATA_PORTABILITY }
+                    icon = FluentIcons.Heart24Regular,
+                    title = "Contribute to Mulberry",
+                    subtitle = "Help keep this platform free, open, and growing",
+                    onClick = { activeSheet = ActiveSettingsSheet.CONTRIBUTE }
                 )
-            }
-
-            // ABOUT MULBERRY
-            SettingsCategoryGroup(
-                title = "ABOUT MULBERRY",
-                titleColor = colors.primary
-            ) {
+                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
+                SettingsItemRow(
+                    icon = FluentIcons.Person24Regular,
+                    title = "Developer Information",
+                    subtitle = "Creator, project story & connect",
+                    onClick = { activeSheet = ActiveSettingsSheet.DEVELOPER_INFO }
+                )
+                HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.5f))
                 SettingsItemRow(
                     icon = FluentIcons.ArrowSync24Regular,
                     title = "Check for Updates",
@@ -527,7 +420,7 @@ fun SettingsScreen(
                 sheetState = sheetState,
                 containerColor = colors.surface,
                 contentColor = colors.textPrimary,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
                 when (activeSheet) {
                     ActiveSettingsSheet.VAULTS -> {
@@ -648,6 +541,25 @@ fun SettingsScreen(
                                 } catch (_: Exception) {
                                     Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
                                 }
+                            }
+                        )
+                    }
+                    ActiveSettingsSheet.CONTRIBUTE -> {
+                        ContributeSheetContent(
+                            onDismiss = {
+                                coroutineScope.launch { sheetState.hide() }
+                                activeSheet = ActiveSettingsSheet.NONE
+                            }
+                        )
+                    }
+                    ActiveSettingsSheet.DEVELOPER_INFO -> {
+                        DeveloperInfoSheetContent(
+                            onDismiss = {
+                                coroutineScope.launch { sheetState.hide() }
+                                activeSheet = ActiveSettingsSheet.NONE
+                            },
+                            onSendEmail = {
+                                sendDiagnosticFeedback(context, currentTheme.title)
                             }
                         )
                     }
@@ -1718,21 +1630,10 @@ private fun AboutSheetContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 1. HEADER & ICON REFINEMENT
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shadowElevation = 4.dp,
-            modifier = Modifier.size(64.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = FluentIcons.Book24Filled,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-        }
+        MulberryExpressiveLogo(
+            size = 72.dp,
+            showContainer = true
+        )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1883,6 +1784,738 @@ private fun AboutSheetContent(
     }
 }
 
+// 8. Contribute Sheet
+@Composable
+private fun ContributeSheetContent(
+    onDismiss: () -> Unit
+) {
+    val colors = LocalMulberryColors.current
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .navigationBarsPadding(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Header
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Contribute to Mulberry",
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = colors.textPrimary
+            )
+            Text(
+                text = "Help keep this platform free, open, and growing.",
+                fontFamily = InterFamily,
+                fontSize = 13.sp,
+                color = colors.textSecondary
+            )
+        }
+
+        // Section 1: ACADEMIC CONTENT
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "ACADEMIC CONTENT",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://forms.gle/FGAupTdNXCWkGu7g9"))
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.primary.copy(alpha = 0.12f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = FluentIcons.ArrowUpload24Regular,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Submit Books & Notes",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.5.sp,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Upload textbooks, notes, or PYQs to the vault via Google Drive. Direct Google Form.",
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Icon(
+                        imageVector = FluentIcons.ChevronRight16Regular,
+                        contentDescription = "Open Google Form",
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        // Section 2: CODE & DEVELOPMENT
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "CODE & DEVELOPMENT",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/doubtsolved/Mulberry"))
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = colors.primary.copy(alpha = 0.12f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = FluentIcons.Code24Regular,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "GitHub Repository",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.5.sp,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Report bugs, request app features, or star the project on GitHub.",
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Icon(
+                        imageVector = FluentIcons.ChevronRight16Regular,
+                        contentDescription = "Open GitHub",
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        // Section 3: COMMUNITY & SPREAD
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "COMMUNITY & SPREAD",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    // Item 1: Telegram Channel & Delivery Bot
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/MulberryIngestionBot"))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Could not open Telegram", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = FluentIcons.Send24Regular,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Telegram Channel & Delivery Bot",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.5.sp,
+                                color = colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Join for instant book drop alerts.",
+                                fontFamily = InterFamily,
+                                fontSize = 12.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Icon(
+                            imageVector = FluentIcons.ChevronRight16Regular,
+                            contentDescription = "Open Telegram",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.6f))
+
+                    // Item 2: Share Mulberry with Batchmates
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val releaseUrl = "https://github.com/doubtsolved/Mulberry/releases"
+                                val shareText = "Check out Mulberry — free, zero-cost, high-speed study engine for MBBS students:\n$releaseUrl"
+
+                                // Copy to clipboard
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Mulberry App Link", releaseUrl))
+                                Toast.makeText(context, "Download link copied to clipboard!", Toast.LENGTH_SHORT).show()
+
+                                // Open share sheet
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Mulberry - Free Medical Study Workspace")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Mulberry with Batchmates"))
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = FluentIcons.Share24Regular,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Share Mulberry with Batchmates",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.5.sp,
+                                color = colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Copy app download link to share with peers.",
+                                fontFamily = InterFamily,
+                                fontSize = 12.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Icon(
+                            imageVector = FluentIcons.ChevronRight16Regular,
+                            contentDescription = "Share",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+// 9. Developer Info Sheet
+@Composable
+private fun DeveloperInfoSheetContent(
+    onDismiss: () -> Unit,
+    onSendEmail: () -> Unit
+) {
+    val colors = LocalMulberryColors.current
+    val context = LocalContext.current
+
+    // Safely load developer avatar PNG from assets
+    val avatarBitmap = remember(context) {
+        try {
+            context.assets.open("file_00000000fdd47208a436f2a36d85eb94 (1).png").use { stream ->
+                BitmapFactory.decodeStream(stream)?.asImageBitmap()
+            }
+        } catch (_: Exception) {
+            try {
+                context.assets.open("developer_avatar.png").use { stream ->
+                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .navigationBarsPadding(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Modal Header
+        Text(
+            text = "The \"Developer\" (Loosely Defined)",
+            fontFamily = PoppinsFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            color = colors.textPrimary
+        )
+
+        // Identity Card: Avatar + Med Student identity
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(1.dp, colors.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = colors.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.25f)),
+                    modifier = Modifier.size(68.dp)
+                ) {
+                    if (avatarBitmap != null) {
+                        Image(
+                            bitmap = avatarBitmap,
+                            contentDescription = "Sahabul Mondal",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(18.dp))
+                        )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            MulberryExpressiveLogo(
+                                size = 42.dp,
+                                animated = false,
+                                showContainer = false
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = "Sahabul Mondal",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Med Student • Accidental App Builder",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.5.sp,
+                        color = colors.primary
+                    )
+                    Text(
+                        text = "\"Coded between dissection hall & viva\"",
+                        fontFamily = InterFamily,
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                }
+            }
+        }
+
+        // Developer Note Card
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(1.dp, colors.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Hey, I’m Sahabul, a medical student and the creator of Mulberry. I built this space to make studying and reading simpler, calmer, and accessible to everyone. 🌿",
+                    fontFamily = InterFamily,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary,
+                    lineHeight = 19.sp
+                )
+                Text(
+                    text = "Full disclosure: My primary occupation is memorizing arterial branches and getting grilled in vivas. I don't write clean computer science code—I just glue tools together until PDFs open smoothly and offline vaults stop crashing. Built so none of us have to carry an entire library in our backpacks",
+                    fontFamily = InterFamily,
+                    fontSize = 13.sp,
+                    color = colors.textSecondary,
+                    lineHeight = 19.sp
+                )
+            }
+        }
+
+        // Section: KNOWN SIDE EFFECTS
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "KNOWN SIDE EFFECTS",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("•", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            text = "Passing 1st Prof with less back pain",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("•", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            text = "Sudden urge to crop every histology diagram",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("•", color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            text = "High-yield revision speedruns at 2 AM",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section: CONNECT & REPORT SYMPTOMS
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "CONNECT & REPORT SYMPTOMS",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Card 1: Report Bug -> preaddressed email to support
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.surfaceCard,
+                    border = BorderStroke(1.dp, colors.borderSubtle),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                    data = Uri.parse("mailto:sahabulmondal2026.support@gmail.com?subject=" + Uri.encode("Bug Report: Mulberry [It broke]"))
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "No email client found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "🐛", fontSize = 18.sp)
+                        Text(
+                            text = "Report Bug",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            color = colors.textPrimary,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "\"It broke\"",
+                            fontFamily = InterFamily,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Card 2: Telegram -> https://t.me/doubtsolved
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.surfaceCard,
+                    border = BorderStroke(1.dp, colors.borderSubtle),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/doubtsolved"))
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Could not open Telegram", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "✈️", fontSize = 18.sp)
+                        Text(
+                            text = "Telegram",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            color = colors.textPrimary,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "@doubtsolved",
+                            fontFamily = InterFamily,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Card 3: Send Chai / Moral Support -> telegram to @sahabul1729
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.surfaceCard,
+                    border = BorderStroke(1.dp, colors.borderSubtle),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/sahabul1729"))
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Could not open Telegram", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "☕", fontSize = 18.sp)
+                        Text(
+                            text = "Send Chai",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            color = colors.textPrimary,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "Moral Support",
+                            fontFamily = InterFamily,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section: SPECIAL THANKS
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "SPECIAL THANKS",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 0.8.sp
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Heart24Regular,
+                        contentDescription = null,
+                        tint = colors.accentDanger,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "To Google AI Studio, Android docs, and everyone sharing notes instead of gatekeeping them before exams.",
+                        fontFamily = InterFamily,
+                        fontSize = 12.5.sp,
+                        color = colors.textSecondary,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
 // Diagnostic Feedback Helper
 private fun sendDiagnosticFeedback(context: Context, themeTitle: String) {
     try {
@@ -1900,7 +2533,7 @@ private fun sendDiagnosticFeedback(context: Context, themeTitle: String) {
         """.trimIndent()
 
         val intent = Intent(Intent.ACTION_SENDTO).apply {
-            data = Uri.parse("mailto:support@mulberry.app?subject=" + Uri.encode("Feedback: Mulberry Android App") + "&body=" + Uri.encode(body))
+            data = Uri.parse("mailto:sahabulmondal2026.support@gmail.com?subject=" + Uri.encode("Feedback: Mulberry Android App") + "&body=" + Uri.encode(body))
         }
         context.startActivity(intent)
     } catch (_: Exception) {
