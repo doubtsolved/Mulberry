@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for integrating background, privacy-preserving Aptabase telemetry using the official aptabase-kotlin SDK with zero UI footprint, Application cold-start initialization, reading session tracking, and lifecycle event dispatches.",
-  "updatedAt": "2026-10-16T11:05:33.988684965Z",
+  "summary": "Revised implementation plan to integrate Firebase Cloud Messaging (FCM) push notifications with BigPictureStyle image attachments (4s timeout), topic broadcasting (\"announcements\" and \"all_users\"), Android 13+ runtime permissions, and priority intent routing in MainActivity.",
+  "updatedAt": "2026-10-17T09:01:12.792426705Z",
   "requestFeedback": true,
   "userFacing": true
 }

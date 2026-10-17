@@ -70,6 +70,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import android.util.Log
+import com.example.util.RequestNotificationPermissionEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -99,6 +101,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handlePushNotificationIntent(intent)
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
@@ -191,11 +194,55 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePushNotificationIntent(intent)
+    }
+
+    private fun handlePushNotificationIntent(intent: Intent?) {
+        val extras = intent?.extras ?: return
+
+        // Priority 1: External URL / Link
+        val url = extras.getString("url") ?: extras.getString("link") ?: extras.getString("web_url")
+        if (!url.isNullOrBlank()) {
+            try {
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(browserIntent)
+                return
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Failed opening notification url: ${e.message}")
+            }
+        }
+
+        // Priority 2: Specific Book Slug / Book ID
+        val bookSlug = extras.getString("book_slug") ?: extras.getString("book_id") ?: extras.getString("slug")
+        if (!bookSlug.isNullOrBlank()) {
+            viewModel.setTab(MulberryTab.LIBRARY)
+            viewModel.setPendingNotificationBookSlug(bookSlug)
+            return
+        }
+
+        // Priority 3: Destination Tab (e.g. "desk", "snips", "agenda", "library", "settings")
+        val destination = extras.getString("destination") ?: extras.getString("tab") ?: extras.getString("route")
+        if (!destination.isNullOrBlank()) {
+            when {
+                destination.contains("desk", ignoreCase = true) || destination.contains("agenda", ignoreCase = true) -> viewModel.setTab(MulberryTab.DESK)
+                destination.contains("snip", ignoreCase = true) -> viewModel.setTab(MulberryTab.SNIPS)
+                destination.contains("setting", ignoreCase = true) -> viewModel.setTab(MulberryTab.SETTINGS)
+                destination.contains("library", ignoreCase = true) -> viewModel.setTab(MulberryTab.LIBRARY)
+            }
+        }
+    }
 }
 
 @androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 fun MulberryApp(viewModel: MulberryViewModel) {
+    RequestNotificationPermissionEffect()
     val context = LocalContext.current
     val currentTab by viewModel.currentTab.collectAsState()
     val visibleTabs by viewModel.visibleTabs.collectAsState()

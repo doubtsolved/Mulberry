@@ -96,9 +96,9 @@ class CatalogRepository(
         // Try Primary CDN first
         try {
             val request = Request.Builder()
-                .url(PRIMARY_CDN_URL)
+                .url("$PRIMARY_CDN_URL?t=${System.currentTimeMillis()}")
                 .header("User-Agent", "Mulberry-Android-Client/2.0")
-                .header("Cache-Control", "max-age=300")
+                .header("Cache-Control", "no-cache, no-store")
                 .build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
@@ -110,8 +110,9 @@ class CatalogRepository(
         // Fallback to Raw GitHub
         try {
             val fallbackRequest = Request.Builder()
-                .url(FALLBACK_RAW_URL)
+                .url("$FALLBACK_RAW_URL?t=${System.currentTimeMillis()}")
                 .header("User-Agent", "Mulberry-Android-Client/2.0")
+                .header("Cache-Control", "no-cache, no-store")
                 .build()
             val fallbackResponse = okHttpClient.newCall(fallbackRequest).execute()
             if (fallbackResponse.isSuccessful) {

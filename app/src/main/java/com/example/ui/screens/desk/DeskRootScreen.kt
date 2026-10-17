@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.data.model.UserProfile
 import com.example.ui.screens.OFFICIAL_CATALOG_TYPES
 import com.example.ui.screens.matchesCatalogType
+import com.example.ui.screens.getOrderedCatalogTypes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -174,9 +175,13 @@ fun DeskRootScreen(
         }
     }
 
-    // Group downloaded books by the 5 official catalog types, dynamically displaying only populated types
-    val catalogCategories = remember(filteredDownloadedBooks) {
-        OFFICIAL_CATALOG_TYPES.mapNotNull { type ->
+    // Group downloaded books dynamically with Standard Textbooks and Notes pinned at top, then A-Z
+    val dynamicDeskCategories = remember(filteredDownloadedBooks) {
+        getOrderedCatalogTypes(filteredDownloadedBooks)
+    }
+
+    val catalogCategories = remember(filteredDownloadedBooks, dynamicDeskCategories) {
+        dynamicDeskCategories.mapNotNull { type ->
             val matching = filteredDownloadedBooks.filter { matchesCatalogType(it, type) }
             if (matching.isNotEmpty()) type to matching else null
         }

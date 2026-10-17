@@ -154,18 +154,19 @@ val MBBS_CURRICULUM = listOf(
 )
 
 /**
- * The exact 5 official catalog resource types from catalog.json
+ * Official catalog resource types from catalog.json
  */
 val OFFICIAL_CATALOG_TYPES = listOf(
     "Standard Textbook",
     "Handwritten Notes",
-    "Review / High-Yield",
+    "AETCOM",
     "Atlas / Practical",
-    "Question Bank (PYQ)"
+    "Question Bank (PYQ)",
+    "Review / High-Yield"
 )
 
 /**
- * Matches a book's type property against the official catalog types.
+ * Matches a book's type property against target types, supporting standard and dynamic types.
  */
 fun matchesCatalogType(book: BookEntity, targetType: String): Boolean {
     val bType = book.type.trim()
@@ -176,10 +177,51 @@ fun matchesCatalogType(book: BookEntity, targetType: String): Boolean {
     return when (targetType) {
         "Standard Textbook" -> bType.contains("Standard", ignoreCase = true) || (bTags.contains("standard textbook") && !bType.contains("Handwritten", ignoreCase = true))
         "Handwritten Notes" -> bType.contains("Handwritten", ignoreCase = true) || bTags.contains("handwritten")
+        "AETCOM" -> bType.contains("Aetcom", ignoreCase = true) || bTags.contains("aetcom")
         "Atlas / Practical" -> bType.contains("Atlas", ignoreCase = true) || bType.contains("Practical", ignoreCase = true) || bTags.contains("atlas") || bTags.contains("practical")
         "Review / High-Yield" -> bType.contains("Review", ignoreCase = true) || bType.contains("High-Yield", ignoreCase = true) || bTags.contains("high-yield") || bTags.contains("review")
         "Question Bank (PYQ)" -> bType.contains("Question", ignoreCase = true) || bType.contains("PYQ", ignoreCase = true) || bTags.contains("pyq") || bTags.contains("question bank")
-        else -> false
+        else -> bType.equals(targetType, ignoreCase = true) || bTags.contains(targetType.lowercase())
+    }
+}
+
+/**
+ * Dynamically discovers all resource types present in the books and orders them:
+ * 1. "Standard Textbook" always pinned first (#1)
+ * 2. "Handwritten Notes" always pinned second (#2)
+ * 3. All other categories (including "AETCOM", "Atlas / Practical", etc.) sorted alphabetically (A-Z)
+ */
+fun getOrderedCatalogTypes(books: List<BookEntity>): List<String> {
+    val discovered = mutableListOf<String>()
+
+    // Check against standard catalog types first
+    for (std in OFFICIAL_CATALOG_TYPES) {
+        if (books.any { matchesCatalogType(it, std) }) {
+            discovered.add(std)
+        }
+    }
+
+    // Discover any novel/custom types present in books
+    for (book in books) {
+        val rawType = book.type.trim()
+        if (rawType.isNotBlank()) {
+            val canonical = if (rawType.equals("aetcom", ignoreCase = true)) "AETCOM" else rawType
+            val alreadyCovered = discovered.any { matchesCatalogType(book, it) }
+            if (!alreadyCovered && discovered.none { it.equals(canonical, ignoreCase = true) }) {
+                discovered.add(canonical)
+            }
+        }
+    }
+
+    // Pinned sort: Standard Textbook -> Handwritten Notes -> Alphabetical (A-Z) for the rest
+    return discovered.sortedWith { a, b ->
+        when {
+            a.equals("Standard Textbook", ignoreCase = true) -> -1
+            b.equals("Standard Textbook", ignoreCase = true) -> 1
+            a.equals("Handwritten Notes", ignoreCase = true) -> -1
+            b.equals("Handwritten Notes", ignoreCase = true) -> 1
+            else -> a.compareTo(b, ignoreCase = true)
+        }
     }
 }
 
@@ -207,6 +249,15 @@ fun LibraryScreen(
     var selectedBookId by remember { mutableStateOf<String?>(null) }
     var expandedCategory by remember { mutableStateOf<String?>(null) }
     var showProfileModal by remember { mutableStateOf(false) }
+
+    val pendingNotificationSlug by viewModel.pendingNotificationBookSlug.collectAsState()
+    LaunchedEffect(pendingNotificationSlug) {
+        val slug = pendingNotificationSlug
+        if (!slug.isNullOrBlank()) {
+            selectedBookId = slug
+            viewModel.clearPendingNotificationBookSlug()
+        }
+    }
 
     val bookSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -241,6 +292,8 @@ fun LibraryScreen(
         books.filter { book ->
             val matchesProf = book.prof.equals(selectedProf.id, ignoreCase = true) ||
                     book.tagsCsv.contains(selectedProf.id, ignoreCase = true) ||
+                    book.prof.equals("all", ignoreCase = true) ||
+                    book.prof.equals("all prof", ignoreCase = true) ||
                     (selectedProf.id == "Final Prof" && (book.prof.contains("Final", ignoreCase = true) || book.year.contains("4th", ignoreCase = true)))
 
             val matchesSubject = if (selectedSubject == "All") true else {
@@ -279,9 +332,13 @@ fun LibraryScreen(
         }
     }
 
-    // Group filtered books according to the 5 official catalog types
-    val categoryRows = remember(filteredBooks) {
-        OFFICIAL_CATALOG_TYPES.mapNotNull { type ->
+    // Group filtered books according to dynamic catalog types (Standard Textbooks & Notes pinned at top, then A-Z)
+    val dynamicCategories = remember(filteredBooks) {
+        getOrderedCatalogTypes(filteredBooks)
+    }
+
+    val categoryRows = remember(filteredBooks, dynamicCategories) {
+        dynamicCategories.mapNotNull { type ->
             val matching = filteredBooks.filter { matchesCatalogType(it, type) }
             if (matching.isNotEmpty()) type to matching else null
         }

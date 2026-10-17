@@ -121,6 +121,9 @@ dependencies {
   implementation("com.google.code.gson:gson:2.11.0")
   implementation("com.github.aptabase:aptabase-kotlin:0.1.0")
 
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging)
+
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)

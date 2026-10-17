@@ -18,7 +18,8 @@ class CatalogSyncEngine(
 ) {
     companion object {
         private const val TAG = "CatalogSyncEngine"
-        private const val GITHUB_CATALOG_URL = "https://raw.githubusercontent.com/doubtsolved/mulberry-catalog/main/catalog.json"
+        private const val PRIMARY_JSDELIVR_URL = "https://cdn.jsdelivr.net/gh/doubtsolved/mulberry-catalog@main/catalog.json"
+        private const val FALLBACK_GITHUB_URL = "https://raw.githubusercontent.com/doubtsolved/mulberry-catalog/main/catalog.json"
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -30,18 +31,23 @@ class CatalogSyncEngine(
 
     suspend fun syncCatalog(): Result<CatalogResponse> = withContext(Dispatchers.IO) {
         val timestamp = System.currentTimeMillis()
-        val directUrl = "$GITHUB_CATALOG_URL?t=$timestamp"
+        val jsdelivrUrl = "$PRIMARY_JSDELIVR_URL?t=$timestamp"
+        val fallbackUrl = "$FALLBACK_GITHUB_URL?t=$timestamp"
 
-        // Fetch catalog.json directly from GitHub (no jsdelivr)
-        val json = fetchUrl(directUrl)
+        // Fetch catalog.json first from jsDelivr CDN, falling back to raw GitHub origin if needed
+        var json = fetchUrl(jsdelivrUrl)
+        if (json.isNullOrBlank()) {
+            Log.w(TAG, "jsDelivr fetch failed or empty, attempting fallback to GitHub origin...")
+            json = fetchUrl(fallbackUrl)
+        }
 
-        if (json == null) {
+        if (json.isNullOrBlank()) {
             // Seed sample books if database is completely empty so user has immediate high-yield catalog
             val existingBooks = bookDao.getAllBooksSync()
             if (existingBooks.isEmpty()) {
                 seedInitialHighYieldBooks()
             }
-            return@withContext Result.failure(IOException("Failed to fetch catalog directly from GitHub"))
+            return@withContext Result.failure(IOException("Failed to fetch catalog from jsDelivr CDN and GitHub fallback"))
         }
 
         try {

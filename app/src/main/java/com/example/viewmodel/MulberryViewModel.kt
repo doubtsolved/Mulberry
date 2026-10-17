@@ -360,6 +360,17 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
     private val _currentReadingBook = MutableStateFlow<BookEntity?>(null)
     val currentReadingBook: StateFlow<BookEntity?> = _currentReadingBook.asStateFlow()
 
+    private val _pendingNotificationBookSlug = MutableStateFlow<String?>(null)
+    val pendingNotificationBookSlug: StateFlow<String?> = _pendingNotificationBookSlug.asStateFlow()
+
+    fun setPendingNotificationBookSlug(slug: String?) {
+        _pendingNotificationBookSlug.value = slug
+    }
+
+    fun clearPendingNotificationBookSlug() {
+        _pendingNotificationBookSlug.value = null
+    }
+
     private val _readerCurrentPage = MutableStateFlow(1)
     val readerCurrentPage: StateFlow<Int> = _readerCurrentPage.asStateFlow()
 
