@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "304670733837",
+    "project_id": "mulberry-archive",
+    "storage_bucket": "mulberry-archive.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304670733837:android:08ec3e1204dfbafc2c4744",
+        "android_client_info": {
+          "package_name": "com.aistudio.mulberry.study"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtV94rH4n-M7yHCxyKDIOt-pprflkFNYQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
