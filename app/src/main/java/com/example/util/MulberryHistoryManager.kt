@@ -26,10 +26,12 @@ data class UserMovementEvent(
     @SerializedName("bookSlug") val bookSlug: String = "",
     @SerializedName("bookTitle") val bookTitle: String = "",
     @SerializedName("bookAuthor") val bookAuthor: String = "",
+    @SerializedName("bookSubject") val bookSubject: String = "",
     @SerializedName("page") val page: Int = 0,
     @SerializedName("totalPages") val totalPages: Int = 0,
     @SerializedName("progressPercent") val progressPercent: Int = 0,
     @SerializedName("durationMinutes") val durationMinutes: Int = 0,
+    @SerializedName("durationSeconds") val durationSeconds: Long = 0L,
     @SerializedName("collectionName") val collectionName: String = "",
     @SerializedName("metadata") val metadata: Map<String, String> = emptyMap()
 )
@@ -138,6 +140,7 @@ object MulberryHistoryManager {
         book: BookEntity? = null,
         page: Int = 0,
         durationMinutes: Int = 0,
+        durationSeconds: Long = 0L,
         collectionName: String = "",
         extraMetadata: Map<String, String> = emptyMap()
     ) = withContext(Dispatchers.IO) {
@@ -145,6 +148,8 @@ object MulberryHistoryManager {
             val current = loadHistoryIndex(context)
             val totalPages = book?.pageCount ?: 0
             val percent = if (totalPages > 0) ((page.toFloat() / totalPages.toFloat()) * 100f).toInt().coerceIn(0, 100) else 0
+            val effSeconds = if (durationSeconds > 0L) durationSeconds else (durationMinutes * 60L)
+            val effMinutes = if (durationMinutes > 0) durationMinutes else (effSeconds / 60L).toInt().coerceAtLeast(1)
 
             val event = UserMovementEvent(
                 eventType = eventType,
@@ -152,10 +157,12 @@ object MulberryHistoryManager {
                 bookSlug = book?.slug ?: "",
                 bookTitle = book?.title ?: "",
                 bookAuthor = book?.author ?: "",
+                bookSubject = book?.subject?.takeIf { it.isNotBlank() && !it.equals("General", ignoreCase = true) } ?: "Medical Core",
                 page = page,
                 totalPages = totalPages,
                 progressPercent = percent,
-                durationMinutes = durationMinutes,
+                durationMinutes = effMinutes,
+                durationSeconds = effSeconds,
                 collectionName = collectionName,
                 metadata = extraMetadata
             )
@@ -180,19 +187,64 @@ object MulberryHistoryManager {
             }
 
             _historyFlow.value = updatedIndex
-            Log.d(TAG, "Recorded movement: $eventType for ${book?.title}")
+            Log.d(TAG, "Recorded movement: $eventType for ${book?.title} (subject=${event.bookSubject}, duration=${effSeconds}s)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to record movement event: ${e.message}", e)
         }
     }
 
     /**
-     * Calculates weekly completed reading minutes from history events.
+     * Discovers recently opened books purely from /sdcard/Mulberry/.history/activity_events.json
+     */
+    fun getRecentlyOpenedBooks(context: Context, allBooks: List<BookEntity>): List<BookEntity> {
+        val index = _historyFlow.value ?: loadHistoryIndex(context)
+        val readEvents = index.events
+            .filter { it.bookTitle.isNotBlank() || it.bookSlug.isNotBlank() }
+            .sortedByDescending { it.timestamp }
+
+        val seenKeys = mutableSetOf<String>()
+        val result = mutableListOf<BookEntity>()
+
+        for (event in readEvents) {
+            val key = event.bookSlug.ifEmpty { event.bookTitle.lowercase().trim() }
+            if (seenKeys.add(key)) {
+                val matched = allBooks.find {
+                    (it.slug.isNotBlank() && it.slug == event.bookSlug) ||
+                    it.title.equals(event.bookTitle, ignoreCase = true)
+                }
+                if (matched != null) {
+                    val updated = matched.copy(
+                        lastReadPage = if (event.page > 0) event.page else matched.lastReadPage,
+                        progressPercent = if (event.progressPercent > 0) event.progressPercent else matched.progressPercent
+                    )
+                    result.add(updated)
+                } else if (event.bookTitle.isNotBlank()) {
+                    result.add(
+                        BookEntity(
+                            id = (event.bookSlug.hashCode() and 0x7FFFFFFF),
+                            title = event.bookTitle,
+                            author = event.bookAuthor,
+                            subject = event.bookSubject.ifEmpty { "Medical" },
+                            lastReadPage = event.page,
+                            pageCount = event.totalPages.coerceAtLeast(1),
+                            progressPercent = event.progressPercent,
+                            isDownloaded = true
+                        )
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * Calculates weekly completed reading minutes solely from history events.
      */
     fun calculateWeeklyReadingMinutes(context: Context): Int {
         val index = _historyFlow.value ?: loadHistoryIndex(context)
         val cal = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
+            firstDayOfWeek = Calendar.MONDAY
+            set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -239,26 +291,32 @@ object MulberryHistoryManager {
 
     /**
      * Loads custom collections from /sdcard/Mulberry/.history/collections.json
+     * Strictly NO preloaded collections!
      */
     fun loadCollections(context: Context): List<CustomCollectionItem> {
         val file = getCollectionsJsonFile(context)
         if (!file.exists() || file.length() == 0L) {
-            // Seed default curated collections if empty
-            val defaultCollections = listOf(
-                CustomCollectionItem(name = "First Year MBBS", description = "Anatomy, Physiology & Biochemistry Essentials", resourceCount = 18),
-                CustomCollectionItem(name = "Must Read", description = "High-yield textbooks & clinical guides", resourceCount = 9),
-                CustomCollectionItem(name = "Exam Prep", description = "Past questions & quick revision notes", resourceCount = 12)
-            )
-            saveCollections(context, defaultCollections)
-            _collectionsFlow.value = defaultCollections
-            return defaultCollections
+            val emptyList = emptyList<CustomCollectionItem>()
+            saveCollections(context, emptyList)
+            _collectionsFlow.value = emptyList
+            return emptyList
         }
         return try {
             FileReader(file).use { reader ->
                 val index = gson.fromJson(reader, CollectionsIndex::class.java)
-                val list = index?.collections ?: emptyList()
-                _collectionsFlow.value = list
-                list
+                val rawList = index?.collections ?: emptyList()
+                // Filter out any unwanted preloaded collections ("Must Read" and "Exam Prep")
+                val cleanedList = rawList.filterNot { col ->
+                    col.name.equals("Must Read", ignoreCase = true) ||
+                    col.name.equals("Exam Prep", ignoreCase = true) ||
+                    col.id == "ee42f806-e7e5-400e-a87d-6962b83915d0" ||
+                    col.id == "d758cefb-81c0-4a8a-a508-708a53942595"
+                }
+                if (cleanedList.size != rawList.size) {
+                    saveCollections(context, cleanedList)
+                }
+                _collectionsFlow.value = cleanedList
+                cleanedList
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed reading collections: ${e.message}", e)
@@ -332,5 +390,13 @@ object MulberryHistoryManager {
             )
             saveCollections(context, current)
         }
+    }
+
+    /**
+     * Deletes a collection completely.
+     */
+    fun deleteCollection(context: Context, collectionId: String) {
+        val current = loadCollections(context).filterNot { it.id == collectionId }
+        saveCollections(context, current)
     }
 }

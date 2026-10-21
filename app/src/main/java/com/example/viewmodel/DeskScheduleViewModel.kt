@@ -247,9 +247,19 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
         }
     }
 
+    private val _scheduleHistory = MutableStateFlow<List<com.example.data.schedule.model.ScheduleHistoryEntry>>(emptyList())
+    val scheduleHistory: StateFlow<List<com.example.data.schedule.model.ScheduleHistoryEntry>> = _scheduleHistory.asStateFlow()
+
+    fun loadScheduleHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _scheduleHistory.value = scheduleRepo.loadScheduleHistory()
+        }
+    }
+
     fun editSession(updatedSession: ReadingSession) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.updateSession(updatedSession)
+            loadScheduleHistory()
         }
     }
 

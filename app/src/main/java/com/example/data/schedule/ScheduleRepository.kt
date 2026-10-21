@@ -5,6 +5,8 @@ import android.os.Build
 import android.util.Log
 import com.example.data.schedule.model.ReadingSession
 import com.example.data.schedule.model.ScheduleVaultFile
+import com.example.data.schedule.model.ScheduleHistoryEntry
+import com.example.data.schedule.model.ScheduleHistoryVault
 import com.example.util.ScheduleAlarmScheduler
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -114,7 +116,9 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 microNote = obj.get("microNote")?.let { runCatching { it.asString }.getOrNull() } ?: "",
                 isCompleted = obj.get("isCompleted")?.let { runCatching { it.asBoolean }.getOrDefault(false) } ?: false,
                 completedEpochMillis = obj.get("completedEpochMillis")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrNull() else null },
-                actualPagesRead = obj.get("actualPagesRead")?.let { runCatching { it.asInt }.getOrDefault(0) } ?: 0
+                actualPagesRead = obj.get("actualPagesRead")?.let { runCatching { it.asInt }.getOrDefault(0) } ?: 0,
+                isOverdueRollover = obj.get("isOverdueRollover")?.let { runCatching { it.asBoolean }.getOrDefault(false) } ?: false,
+                originalScheduledEpochMillis = obj.get("originalScheduledEpochMillis")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrNull() else null }
             )
         }
     }
@@ -246,15 +250,64 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 }
             }
 
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val startOfToday = cal.timeInMillis
+
+            var hadRollovers = false
+            val processedSessions = cleanSessions.map { session ->
+                if (!session.isCompleted && session.scheduledEpochMillis > 0L && session.scheduledEpochMillis < startOfToday) {
+                    hadRollovers = true
+                    val sessionCal = Calendar.getInstance().apply { timeInMillis = session.scheduledEpochMillis }
+                    val targetCal = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, sessionCal.get(Calendar.HOUR_OF_DAY))
+                        set(Calendar.MINUTE, sessionCal.get(Calendar.MINUTE))
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val rolledTime = targetCal.timeInMillis
+                    val rolled = session.copy(
+                        scheduledEpochMillis = rolledTime,
+                        isOverdueRollover = true,
+                        originalScheduledEpochMillis = session.originalScheduledEpochMillis ?: session.scheduledEpochMillis
+                    )
+                    scope.launch(Dispatchers.IO) {
+                        recordHistoryEntry(
+                            ScheduleHistoryEntry(
+                                sessionId = rolled.id,
+                                bookTitle = rolled.bookTitle,
+                                bookFileName = rolled.bookFileName,
+                                startPage = rolled.startPage,
+                                endPage = rolled.endPage,
+                                pagesRead = (rolled.currentPageReached - rolled.startPage).coerceAtLeast(0),
+                                scheduledEpochMillis = rolledTime,
+                                completedEpochMillis = null,
+                                isCompleted = false,
+                                wasRolledOver = true,
+                                action = "ROLLED_OVER",
+                                note = "Overdue schedule auto-shifted to today"
+                            )
+                        )
+                    }
+                    rolled
+                } else {
+                    session
+                }
+            }
+
             val finalState = ScheduleVaultFile(
                 version = parsed?.version ?: 1,
                 weeklyGoalPages = parsed?.weeklyGoalPages ?: 200,
-                sessions = cleanSessions
+                sessions = processedSessions
             )
             _scheduleState.value = finalState
 
-            // If we recovered with an empty file due to corruption or absence, or cleaned legacy maps, save clean file to disk
-            if ((parsed == null && !scheduleFile.exists()) || hadRawMaps) {
+            // If we recovered with an empty file due to corruption or absence, or cleaned legacy maps, or rolled over overdue sessions, save clean file to disk
+            if ((parsed == null && !scheduleFile.exists()) || hadRawMaps || hadRollovers) {
                 runCatching { persistToDisk(finalState) }
             }
 
@@ -342,6 +395,19 @@ class ScheduleRepository private constructor(private val appContext: Context) {
             val updatedFile = current.copy(sessions = updatedSessions)
             persistToDisk(updatedFile)
             ScheduleAlarmScheduler.scheduleAlarm(appContext, session)
+            recordHistoryEntry(
+                ScheduleHistoryEntry(
+                    sessionId = session.id,
+                    bookTitle = session.bookTitle,
+                    bookFileName = session.bookFileName,
+                    startPage = session.startPage,
+                    endPage = session.endPage,
+                    scheduledEpochMillis = session.scheduledEpochMillis,
+                    isCompleted = false,
+                    action = "CREATED",
+                    note = session.microNote
+                )
+            )
         }
     }
 
@@ -359,6 +425,19 @@ class ScheduleRepository private constructor(private val appContext: Context) {
             if (!session.isCompleted) {
                 ScheduleAlarmScheduler.scheduleAlarm(appContext, session)
             }
+            recordHistoryEntry(
+                ScheduleHistoryEntry(
+                    sessionId = session.id,
+                    bookTitle = session.bookTitle,
+                    bookFileName = session.bookFileName,
+                    startPage = session.startPage,
+                    endPage = session.endPage,
+                    scheduledEpochMillis = session.scheduledEpochMillis,
+                    isCompleted = session.isCompleted,
+                    action = "EDITED",
+                    note = session.microNote
+                )
+            )
         }
     }
 
@@ -380,6 +459,21 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
             ScheduleAlarmScheduler.cancelAlarm(appContext, target)
             persistToDisk(current.copy(sessions = updatedSessions))
+            recordHistoryEntry(
+                ScheduleHistoryEntry(
+                    sessionId = target.id,
+                    bookTitle = target.bookTitle,
+                    bookFileName = target.bookFileName,
+                    startPage = target.startPage,
+                    endPage = target.endPage,
+                    pagesRead = updatedSession.actualPagesRead,
+                    scheduledEpochMillis = target.scheduledEpochMillis,
+                    completedEpochMillis = now,
+                    isCompleted = true,
+                    action = "COMPLETED",
+                    note = target.microNote
+                )
+            )
         }
     }
 
@@ -621,5 +715,46 @@ class ScheduleRepository private constructor(private val appContext: Context) {
         val dir = File(root, SCHEDULE_DIR_NAME)
         if (!dir.exists()) dir.mkdirs()
         return File(dir, TMP_FILE_NAME)
+    }
+
+    private fun getScheduleHistoryFile(root: String): File {
+        val dir = File(root, SCHEDULE_DIR_NAME)
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "schedule_history.json")
+    }
+
+    suspend fun loadScheduleHistory(): List<ScheduleHistoryEntry> = withContext(Dispatchers.IO) {
+        val root = activeVaultPath ?: com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
+        val file = getScheduleHistoryFile(root)
+        if (!file.exists() || file.length() == 0L) return@withContext emptyList()
+        try {
+            val json = file.readText()
+            val vault = gson.fromJson(json, ScheduleHistoryVault::class.java)
+            vault?.history ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed reading schedule_history.json", e)
+            emptyList()
+        }
+    }
+
+    suspend fun recordHistoryEntry(entry: ScheduleHistoryEntry) = withContext(Dispatchers.IO) {
+        val root = activeVaultPath ?: com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
+        val file = getScheduleHistoryFile(root)
+        try {
+            val existing = if (file.exists() && file.length() > 0L) {
+                runCatching {
+                    gson.fromJson(file.readText(), ScheduleHistoryVault::class.java)?.history ?: emptyList()
+                }.getOrDefault(emptyList())
+            } else emptyList()
+
+            val updated = listOf(entry) + existing.take(500)
+            val vault = ScheduleHistoryVault(
+                updatedAt = System.currentTimeMillis(),
+                history = updated
+            )
+            file.writeText(gson.toJson(vault))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed writing schedule_history.json", e)
+        }
     }
 }

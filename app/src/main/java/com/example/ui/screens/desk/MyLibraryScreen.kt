@@ -31,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -122,6 +123,7 @@ fun MyLibraryScreen(
 
     val collections by MulberryHistoryManager.collectionsFlow.collectAsState()
     var showCreateCollectionDialog by remember { mutableStateOf(false) }
+    var collectionToDelete by remember { mutableStateOf<CustomCollectionItem?>(null) }
     var newCollectionName by remember { mutableStateOf("") }
     var newCollectionDesc by remember { mutableStateOf("") }
 
@@ -163,13 +165,10 @@ fun MyLibraryScreen(
         }
     }
 
-    // Recently Opened books (filtered by last read activity)
+    // Recently Opened books directly from /sdcard/Mulberry/.history/activity_events.json
     val recentlyOpened = remember(activeBooks) {
-        activeBooks
-            .filter { it.lastReadPage > 0 || it.lastReadTimestamp > 0L }
-            .sortedByDescending { it.lastReadTimestamp }
-            .take(6)
-            .ifEmpty { activeBooks.take(4) }
+        val historyRecent = MulberryHistoryManager.getRecentlyOpenedBooks(context, activeBooks)
+        if (historyRecent.isNotEmpty()) historyRecent.take(6) else activeBooks.take(4)
     }
 
     Scaffold(
@@ -271,49 +270,13 @@ fun MyLibraryScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            // 1. Search Bar
-            item(key = "search_bar") {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("my_library_search_input"),
-                    placeholder = {
-                        Text(
-                            text = "Search books, notes, materials...",
-                            fontFamily = InterFamily,
-                            fontSize = 13.5.sp,
-                            color = colors.textMuted
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = FluentIcons.Search24Regular,
-                            contentDescription = null,
-                            tint = colors.textSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.primary,
-                        unfocusedBorderColor = colors.borderSubtle,
-                        focusedContainerColor = colors.surfaceCard,
-                        unfocusedContainerColor = colors.surfaceCard
-                    ),
-                    singleLine = true
-                )
-            }
-
-            // 2. DOWNLOADED BOOKS (Renamed from YOUR COLLECTION, enlarged font size 18sp, subtext removed)
+            // 1. DOWNLOADED BOOKS (Enlarged font size 20sp, subtext removed)
             item(key = "downloaded_books_header") {
                 Text(
                     text = "Downloaded Books",
                     fontFamily = PoppinsFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
+                    fontSize = 20.sp,
                     color = colors.textPrimary,
                     letterSpacing = (-0.3).sp
                 )
@@ -552,18 +515,36 @@ fun MyLibraryScreen(
                                                 )
                                             }
 
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color.Black.copy(alpha = 0.18f)
-                                            ) {
-                                                Text(
-                                                    text = "$displayCount items",
-                                                    fontFamily = InterFamily,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 11.sp,
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                                )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.Black.copy(alpha = 0.2f)
+                                                ) {
+                                                    Text(
+                                                        text = "$displayCount items",
+                                                        fontFamily = InterFamily,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 11.sp,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(22.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color.Black.copy(alpha = 0.25f))
+                                                        .clickable { collectionToDelete = col },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = FluentIcons.Dismiss24Regular,
+                                                        contentDescription = "Delete collection",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                }
                                             }
                                         }
 
@@ -741,6 +722,47 @@ fun MyLibraryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCreateCollectionDialog = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Delete Collection Confirmation Dialog
+    if (collectionToDelete != null) {
+        val targetCol = collectionToDelete!!
+        AlertDialog(
+            onDismissRequest = { collectionToDelete = null },
+            title = {
+                Text(
+                    text = "Delete Collection",
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to remove \"${targetCol.name}\"? Your books will remain safe in your library.",
+                    fontFamily = InterFamily,
+                    fontSize = 13.5.sp,
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        MulberryHistoryManager.deleteCollection(context, targetCol.id)
+                        Toast.makeText(context, "Collection \"${targetCol.name}\" removed", Toast.LENGTH_SHORT).show()
+                        collectionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { collectionToDelete = null }) {
                     Text("Cancel", color = colors.textSecondary)
                 }
             }

@@ -360,6 +360,8 @@ object FluentIcons {
         }
     }.build()
 
+    val History24Regular: ImageVector = Clock24Regular
+
     // Edit20Regular
     val Edit20Regular: ImageVector = ImageVector.Builder(
         name = "Edit20Regular",

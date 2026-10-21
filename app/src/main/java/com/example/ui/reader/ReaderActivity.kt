@@ -21,13 +21,25 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +53,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -161,6 +177,47 @@ class ReaderActivity : AppCompatActivity() {
     private var activeTheme: ThemeMode = ThemeMode.LIGHT
     private var ephemeralPdfFile: File? = null
     private var activeRenderingPath: String = ""
+
+    private val showScheduleCelebration = mutableStateOf(false)
+    private val completedScheduleSession = mutableStateOf<com.example.data.schedule.model.ReadingSession?>(null)
+    private val celebratedSessionIds = mutableSetOf<String>()
+
+    private fun checkScheduleProgressAndCelebrate(newPage: Int) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val scheduleRepo = com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                val currentSessionId = sessionId
+                val effectiveTitle = bookTitle
+
+                // 1. Live schedule sync
+                if (!currentSessionId.isNullOrBlank()) {
+                    scheduleRepo.updateSessionProgress(currentSessionId, newPage)
+                }
+                if (effectiveTitle.isNotBlank()) {
+                    scheduleRepo.reconcileReadingProgress(effectiveTitle, newPage)
+                }
+
+                // 2. Cheering celebration check if end page reached
+                val sessions = scheduleRepo.scheduleState.value.sessions
+                val matched = sessions.firstOrNull { s ->
+                    val isMatch = (currentSessionId != null && s.id == currentSessionId) ||
+                            s.bookTitle.equals(effectiveTitle, ignoreCase = true) ||
+                            (s.bookFileName.isNotBlank() && effectiveTitle.contains(s.bookFileName.removeSuffix(".pdf"), ignoreCase = true))
+                    isMatch && !celebratedSessionIds.contains(s.id) && newPage >= s.endPage
+                }
+
+                if (matched != null) {
+                    celebratedSessionIds.add(matched.id)
+                    withContext(Dispatchers.Main) {
+                        completedScheduleSession.value = matched
+                        showScheduleCelebration.value = true
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     private var thumbnailManager: PdfThumbnailManager? = null
     private var searchManager: PdfTextSearchManager? = null
@@ -619,24 +676,36 @@ class ReaderActivity : AppCompatActivity() {
                         val docFile = if (!targetPath.startsWith("content://")) File(targetPath).takeIf { it.exists() } else null
                         val docUri = if (targetPath.startsWith("content://")) Uri.parse(targetPath) else null
 
-                        SinglePagePdfViewer(
-                            pdfFile = docFile,
-                            pdfUri = docUri,
-                            initialPage = currentSinglePage.intValue,
-                            totalPages = totalPagesState.intValue,
-                            targetPageJump = singlePageTargetJump.intValue,
-                            searchMatches = searchMatchesState.value,
-                            activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
-                            onPageChanged = { pageIndex ->
-                                currentSinglePage.intValue = pageIndex
-                                maxPageReached = maxOf(maxPageReached, pageIndex + 1)
-                            },
-                            themeMode = activeTheme,
-                            onToggleControls = { visible ->
-                                toggleReaderControls(visible)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            SinglePagePdfViewer(
+                                pdfFile = docFile,
+                                pdfUri = docUri,
+                                initialPage = currentSinglePage.intValue,
+                                totalPages = totalPagesState.intValue,
+                                targetPageJump = singlePageTargetJump.intValue,
+                                searchMatches = searchMatchesState.value,
+                                activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
+                                onPageChanged = { pageIndex ->
+                                    currentSinglePage.intValue = pageIndex
+                                    val newPage = pageIndex + 1
+                                    maxPageReached = maxOf(maxPageReached, newPage)
+                                    checkScheduleProgressAndCelebrate(newPage)
+                                },
+                                themeMode = activeTheme,
+                                onToggleControls = { visible ->
+                                    toggleReaderControls(visible)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            if (showScheduleCelebration.value && completedScheduleSession.value != null) {
+                                ScheduleCelebrationOverlay(
+                                    session = completedScheduleSession.value!!,
+                                    onContinueReading = { showScheduleCelebration.value = false },
+                                    onDismiss = { showScheduleCelebration.value = false }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -975,6 +1044,134 @@ class ReaderActivity : AppCompatActivity() {
                 R.anim.book_close_enter,
                 R.anim.book_close_exit
             )
+        }
+    }
+}
+
+/**
+ * Confetti particle cheering celebration banner with quick dismiss per user clarification.
+ */
+@Composable
+private fun ScheduleCelebrationOverlay(
+    session: com.example.data.schedule.model.ReadingSession,
+    onContinueReading: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalMulberryColors.current
+    val infiniteTransition = rememberInfiniteTransition(label = "confetti_anim")
+    val animOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "confetti_fall"
+    )
+
+    val confettiColors = remember {
+        listOf(
+            Color(0xFFFFD700), // Gold
+            Color(0xFF00E5FF), // Cyan
+            Color(0xFFFF4081), // Pink
+            Color(0xFF00E676), // Emerald
+            Color(0xFF7C4DFF), // Purple
+            Color(0xFFFF9100)  // Orange
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        // Falling animated confetti particle canvas
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            for (i in 0 until 36) {
+                val seed = (i * 37) % 100 / 100f
+                val x = (seed * width + (animOffset * 90f)) % width
+                val speedFactor = 0.5f + (i % 5) * 0.25f
+                val y = ((animOffset * height * speedFactor) + (i * 26f)) % height
+                val particleColor = confettiColors[i % confettiColors.size]
+                val radius = 3.5f + (i % 4) * 2f
+                drawCircle(color = particleColor.copy(alpha = 0.85f), radius = radius, center = Offset(x, y))
+            }
+        }
+
+        // Celebration Banner with quick dismiss
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(1.5.dp, colors.primary),
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "🎉",
+                            fontSize = 20.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Schedule Completed!",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = colors.primary
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = FluentIcons.Dismiss24Regular,
+                            contentDescription = "Dismiss",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "You reached page ${session.endPage} for '${session.bookTitle}'!",
+                    fontFamily = InterFamily,
+                    fontSize = 13.sp,
+                    color = colors.textPrimary
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onContinueReading,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                    ) {
+                        Text(
+                            text = "Continue Reading",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.5.sp,
+                            color = colors.onPrimary
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -26,7 +26,9 @@ data class ReadingSession(
     @SerializedName("microNote") val microNote: String = "",         // Short focus label (e.g., "Aortic valve murmurs")
     @SerializedName("isCompleted") val isCompleted: Boolean = false,
     @SerializedName("completedEpochMillis") val completedEpochMillis: Long? = null,
-    @SerializedName("actualPagesRead") val actualPagesRead: Int = 0
+    @SerializedName("actualPagesRead") val actualPagesRead: Int = 0,
+    @SerializedName("isOverdueRollover") val isOverdueRollover: Boolean = false,
+    @SerializedName("originalScheduledEpochMillis") val originalScheduledEpochMillis: Long? = null
 ) {
     val totalPages: Int get() = (endPage - startPage + 1).coerceAtLeast(1)
     val estimatedMinutes: Int get() = totalPages * 2 // 2 min/page standard estimate
@@ -48,3 +50,31 @@ data class ReadingSession(
             scheduledEpochMillis - (reminderMinutesBefore * 60 * 1000L)
         } else null
 }
+
+/**
+ * Historical schedule ledger entry stored at /sdcard/Mulberry/.schedule/schedule_history.json
+ */
+@Keep
+data class ScheduleHistoryEntry(
+    @SerializedName("id") val id: String = UUID.randomUUID().toString(),
+    @SerializedName("sessionId") val sessionId: String = "",
+    @SerializedName("bookTitle") val bookTitle: String = "",
+    @SerializedName("bookFileName") val bookFileName: String = "",
+    @SerializedName("startPage") val startPage: Int = 1,
+    @SerializedName("endPage") val endPage: Int = 1,
+    @SerializedName("pagesRead") val pagesRead: Int = 0,
+    @SerializedName("scheduledEpochMillis") val scheduledEpochMillis: Long = 0L,
+    @SerializedName("completedEpochMillis") val completedEpochMillis: Long? = null,
+    @SerializedName("isCompleted") val isCompleted: Boolean = false,
+    @SerializedName("wasRolledOver") val wasRolledOver: Boolean = false,
+    @SerializedName("action") val action: String = "COMPLETED", // CREATED, EDITED, COMPLETED, ROLLED_OVER
+    @SerializedName("recordedAt") val recordedAt: Long = System.currentTimeMillis(),
+    @SerializedName("note") val note: String = ""
+)
+
+@Keep
+data class ScheduleHistoryVault(
+    @SerializedName("version") val version: Int = 1,
+    @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
+    @SerializedName("history") val history: List<ScheduleHistoryEntry> = emptyList()
+)

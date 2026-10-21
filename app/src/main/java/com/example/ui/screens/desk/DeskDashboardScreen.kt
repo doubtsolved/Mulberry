@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -94,23 +95,35 @@ fun DeskDashboardScreen(
         sdf.format(Date()).uppercase()
     }
 
-    // Determine last read book for "PICK UP WHERE YOU LEFT OFF"
-    val resumeBook = remember(downloadedBooks) {
-        downloadedBooks
-            .filter { it.lastReadPage > 0 || it.lastReadTimestamp > 0L }
-            .maxByOrNull { it.lastReadTimestamp }
-            ?: downloadedBooks.firstOrNull()
+    // Recently opened books derived purely from /sdcard/Mulberry/.history/activity_events.json
+    val recentHistoryBooks = remember(downloadedBooks) {
+        MulberryHistoryManager.getRecentlyOpenedBooks(context, downloadedBooks)
     }
 
-    // Recently added books (newly downloaded or added)
-    val recentlyAddedBooks = remember(downloadedBooks) {
-        downloadedBooks.take(6)
+    // Determine last read book for "PICK UP WHERE YOU LEFT OFF" purely from history
+    val resumeBook = remember(recentHistoryBooks, downloadedBooks) {
+        recentHistoryBooks.firstOrNull() ?: downloadedBooks.firstOrNull()
     }
 
-    // Weekly reading calculation
-    val weeklyHoursRead = 4.5
+    // Recently opened / added books from history file
+    val recentlyAddedBooks = remember(recentHistoryBooks, downloadedBooks) {
+        if (recentHistoryBooks.isNotEmpty()) recentHistoryBooks.take(6) else downloadedBooks.take(6)
+    }
+
+    // Weekly reading calculation tracked solely from book reading history ledger
+    val weeklyMinutesRead = remember {
+        MulberryHistoryManager.calculateWeeklyReadingMinutes(context)
+    }
     val weeklyTargetHours = 7.0
-    val progressPercent = ((weeklyHoursRead / weeklyTargetHours) * 100).toInt().coerceIn(0, 100)
+    val weeklyHoursRead = remember(weeklyMinutesRead) {
+        String.format(Locale.US, "%.1f", (weeklyMinutesRead / 60.0f))
+    }
+    val progressPercent = remember(weeklyMinutesRead) {
+        ((weeklyMinutesRead.toFloat() / (weeklyTargetHours * 60f)) * 100f).toInt().coerceIn(0, 100)
+    }
+    val weeklyDaysActive = remember {
+        MulberryHistoryManager.getWeeklyDayActivity(context)
+    }
 
     val currentCal = Calendar.getInstance()
     val todayDayOfWeek = currentCal.get(Calendar.DAY_OF_WEEK) // SUNDAY=1, MONDAY=2, etc.
@@ -169,13 +182,19 @@ fun DeskDashboardScreen(
             }
         }
     ) { innerPadding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentAlignment = Alignment.TopCenter
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 760.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
             // 1. DATE HEADER
             item(key = "desk_date_header") {
                 Text(
@@ -555,7 +574,7 @@ fun DeskDashboardScreen(
                                 dayNames.forEachIndexed { idx, name ->
                                     val dayCalCode = dayOfWeekIndices[idx]
                                     val isToday = dayCalCode == todayDayOfWeek
-                                    val isPastCompleted = idx == 0 // e.g. Mon completed
+                                    val isCompletedOnDay = weeklyDaysActive.getOrElse(idx) { false }
 
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -583,14 +602,14 @@ fun DeskDashboardScreen(
                                         ) {
                                             Text(
                                                 text = when {
-                                                    isPastCompleted -> "✓"
-                                                    isToday -> todayDateNumber.toString()
+                                                    isCompletedOnDay && !isToday -> "✓"
+                                                    isToday -> if (isCompletedOnDay) "✓" else todayDateNumber.toString()
                                                     else -> "○"
                                                 },
                                                 fontFamily = InterFamily,
-                                                fontWeight = if (isToday || isPastCompleted) FontWeight.Bold else FontWeight.Normal,
+                                                fontWeight = if (isToday || isCompletedOnDay) FontWeight.Bold else FontWeight.Normal,
                                                 fontSize = if (isToday) 11.5.sp else 11.sp,
-                                                color = if (isToday || isPastCompleted) colors.primary else colors.textMuted
+                                                color = if (isToday || isCompletedOnDay) colors.primary else colors.textMuted
                                             )
                                         }
                                     }
@@ -732,6 +751,7 @@ fun DeskDashboardScreen(
             }
         }
     }
+}
 
     // Humorous Donation Modal
     if (showCoffeeDialog) {
