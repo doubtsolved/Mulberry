@@ -291,9 +291,46 @@ object MulberryHistoryManager {
         val newCol = CustomCollectionItem(
             name = name.trim(),
             description = description.trim(),
-            resourceCount = 0
+            resourceCount = 0,
+            bookSlugs = emptyList()
         )
         current.add(newCol)
         saveCollections(context, current)
+    }
+
+    /**
+     * Adds a book slug to a specific collection.
+     */
+    fun addBookToCollection(context: Context, collectionId: String, bookSlug: String) {
+        val current = loadCollections(context).toMutableList()
+        val index = current.indexOfFirst { it.id == collectionId }
+        if (index != -1) {
+            val col = current[index]
+            if (!col.bookSlugs.contains(bookSlug)) {
+                val updatedSlugs = col.bookSlugs + bookSlug
+                current[index] = col.copy(
+                    bookSlugs = updatedSlugs,
+                    resourceCount = updatedSlugs.size
+                )
+                saveCollections(context, current)
+            }
+        }
+    }
+
+    /**
+     * Removes a book slug from a specific collection.
+     */
+    fun removeBookFromCollection(context: Context, collectionId: String, bookSlug: String) {
+        val current = loadCollections(context).toMutableList()
+        val index = current.indexOfFirst { it.id == collectionId }
+        if (index != -1) {
+            val col = current[index]
+            val updatedSlugs = col.bookSlugs.filterNot { it == bookSlug }
+            current[index] = col.copy(
+                bookSlugs = updatedSlugs,
+                resourceCount = updatedSlugs.size
+            )
+            saveCollections(context, current)
+        }
     }
 }

@@ -269,13 +269,15 @@ fun MulberryApp(viewModel: MulberryViewModel) {
         } catch (_: Exception) {}
     }
 
+    var isDeskAtHome by remember { mutableStateOf(true) }
+
     // System Back Navigation: Switch non-desk tabs back to Desk
     BackHandler(enabled = !isReaderOpen && currentTab != MulberryTab.DESK) {
         viewModel.setTab(MulberryTab.DESK)
     }
 
     // System Back Navigation: On root Desk tab, require double press to exit
-    val isAtRootDesk = !isReaderOpen && currentTab == MulberryTab.DESK
+    val isAtRootDesk = !isReaderOpen && currentTab == MulberryTab.DESK && isDeskAtHome
     BackHandler(enabled = isAtRootDesk) {
         val now = System.currentTimeMillis()
         if (now - lastBackPressTime < 2000L) {
@@ -293,6 +295,9 @@ fun MulberryApp(viewModel: MulberryViewModel) {
         initialPage = initialPageIndex,
         pageCount = { visibleTabs.size }
     )
+
+    // Sidewise gesture switch disabled except when on root Desk Home UI
+    val canSwipeSideways = currentTab == MulberryTab.DESK && isDeskAtHome
 
     // Synchronize programmatic tab changes to the pager immediately
     LaunchedEffect(currentTab, visibleTabs) {
@@ -341,6 +346,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 ) {
                     HorizontalPager(
                         state = pagerState,
+                        userScrollEnabled = canSwipeSideways,
                         modifier = Modifier.fillMaxSize(),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
@@ -348,6 +354,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         when (tab) {
                             MulberryTab.DESK -> DeskRootScreen(
                                 modifier = Modifier.fillMaxSize(),
+                                onDeskAtHomeChanged = { isDeskAtHome = it },
                                 onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
                             )
                             MulberryTab.LIBRARY -> LibraryScreen(
@@ -391,6 +398,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 ) {
                     HorizontalPager(
                         state = pagerState,
+                        userScrollEnabled = canSwipeSideways,
                         modifier = Modifier.fillMaxSize(),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
@@ -398,6 +406,7 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         when (tab) {
                             MulberryTab.DESK -> DeskRootScreen(
                                 modifier = Modifier.fillMaxSize(),
+                                onDeskAtHomeChanged = { isDeskAtHome = it },
                                 onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
                             )
                             MulberryTab.LIBRARY -> LibraryScreen(

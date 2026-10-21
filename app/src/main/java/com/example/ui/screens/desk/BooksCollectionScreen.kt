@@ -31,7 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -59,20 +58,21 @@ import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.PoppinsFamily
 
-enum class BookFilterChip(val label: String) {
-    ALL("All books"),
-    IN_PROGRESS("In progress"),
-    UNREAD("Unread"),
-    FINISHED("Finished")
-}
-
 /**
- * Books Collection Screen (Wireframe 03)
+ * Materials Folder / Collection Screen
+ * Displays items for a specific material type (Books, Notes, PYQs, Handouts) or a Custom Collection.
+ * Features:
+ * - Dynamic subject filters derived strictly from the items present
+ * - In-progress, bookmarked, finished cards removed
+ * - In-progress, unread, finished chips removed
+ * - Clean 2-column grid with shared book-action modal trigger
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BooksCollectionScreen(
     books: List<BookEntity>,
+    title: String = "Books",
+    parentCategory: String = "DOWNLOADED",
     onBackClick: () -> Unit,
     onBookClick: (BookEntity) -> Unit,
     onBookLongClick: (BookEntity) -> Unit,
@@ -81,28 +81,31 @@ fun BooksCollectionScreen(
 ) {
     val colors = LocalMulberryColors.current
     var searchQuery by remember { mutableStateOf("") }
-    var selectedFilter by remember { mutableStateOf(BookFilterChip.ALL) }
+    var selectedSubject by remember { mutableStateOf("All") }
 
-    // Metrics calculations
-    val inProgressCount = books.count { it.lastReadPage > 1 && it.lastReadPage < it.pageCount }
-    val bookmarkedCount = books.count { it.isFavorite }
-    val finishedCount = books.count { it.pageCount > 0 && it.lastReadPage >= it.pageCount }
+    // Dynamically derive subject filters from books present in this collection
+    val availableSubjects = remember(books) {
+        val distinct = books
+            .map { it.subject.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        listOf("All") + distinct
+    }
 
-    // Filter books
-    val filteredBooks = books.filter { book ->
-        val matchesQuery = searchQuery.isBlank() ||
-                book.title.contains(searchQuery, ignoreCase = true) ||
-                book.author.contains(searchQuery, ignoreCase = true) ||
-                book.subject.contains(searchQuery, ignoreCase = true)
+    // Filter books based on search query and selected subject
+    val filteredBooks = remember(books, searchQuery, selectedSubject) {
+        books.filter { book ->
+            val matchesQuery = searchQuery.isBlank() ||
+                    book.title.contains(searchQuery, ignoreCase = true) ||
+                    book.author.contains(searchQuery, ignoreCase = true) ||
+                    book.subject.contains(searchQuery, ignoreCase = true)
 
-        val matchesFilter = when (selectedFilter) {
-            BookFilterChip.ALL -> true
-            BookFilterChip.IN_PROGRESS -> book.lastReadPage > 1 && book.lastReadPage < book.pageCount
-            BookFilterChip.UNREAD -> book.lastReadPage <= 1
-            BookFilterChip.FINISHED -> book.pageCount > 0 && book.lastReadPage >= book.pageCount
+            val matchesSubject = selectedSubject == "All" ||
+                    book.subject.equals(selectedSubject, ignoreCase = true)
+
+            matchesQuery && matchesSubject
         }
-
-        matchesQuery && matchesFilter
     }
 
     Scaffold(
@@ -135,44 +138,122 @@ fun BooksCollectionScreen(
                             tint = colors.textPrimary,
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "MY LIBRARY / MATERIALS",
-                            fontFamily = InterFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            letterSpacing = 0.8.sp,
-                            color = colors.textMuted
-                        )
-                    }
-
-                    Row {
-                        IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
-                            Icon(
-                                imageVector = FluentIcons.MoreVertical24Regular,
-                                contentDescription = "More",
-                                tint = colors.textPrimary,
-                                modifier = Modifier.size(18.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "$parentCategory / $title",
+                                fontFamily = InterFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.5.sp,
+                                letterSpacing = 0.8.sp,
+                                color = colors.primary
+                            )
+                            Text(
+                                text = title,
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                                color = colors.textPrimary
                             )
                         }
                     }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.primary.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "${filteredBooks.size} items",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = colors.primary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Text(
-                    text = "Books",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 26.sp,
-                    color = colors.textPrimary
+                // Search input
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("collection_search_input"),
+                    placeholder = {
+                        Text(
+                            text = "Search in $title...",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = colors.textMuted
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = FluentIcons.Search24Regular,
+                            contentDescription = null,
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(
+                                    imageVector = FluentIcons.Dismiss24Regular,
+                                    contentDescription = "Clear",
+                                    tint = colors.textMuted,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.borderSubtle,
+                        focusedContainerColor = colors.surfaceCard,
+                        unfocusedContainerColor = colors.surfaceCard
+                    ),
+                    singleLine = true
                 )
-                Text(
-                    text = "Your bookshelf • ${books.size} books",
-                    fontFamily = InterFamily,
-                    fontSize = 13.sp,
-                    color = colors.textSecondary
-                )
+
+                // Dynamic Subject Filter Chips (derived dynamically from items present)
+                if (availableSubjects.size > 1) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(availableSubjects) { subject ->
+                            val isSelected = selectedSubject == subject
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) colors.primary else colors.surfaceCard,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) colors.primary else colors.borderSubtle
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { selectedSubject = subject }
+                                    .testTag("subject_chip_$subject")
+                            ) {
+                                Text(
+                                    text = subject,
+                                    fontFamily = InterFamily,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    fontSize = 12.sp,
+                                    color = if (isSelected) colors.onPrimary else colors.textPrimary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         bottomBar = {
@@ -180,237 +261,110 @@ fun BooksCollectionScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
                 color = Color.Transparent
             ) {
                 Button(
                     onClick = onAddBooksClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("btn_books_add_more"),
-                    shape = RoundedCornerShape(16.dp),
+                        .height(48.dp)
+                        .testTag("btn_add_more_books"),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colors.primary,
                         contentColor = colors.onPrimary
                     )
                 ) {
                     Icon(
-                        imageVector = FluentIcons.Add24Regular,
+                        imageVector = FluentIcons.ArrowDownload24Regular,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Add books from Library",
+                        text = "Browse online catalog for more",
                         fontFamily = PoppinsFamily,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.5.sp
+                        fontSize = 14.sp
                     )
                 }
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Summary Metrics Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MetricSummaryCard(
-                    count = inProgressCount,
-                    label = "In progress",
-                    modifier = Modifier.weight(1f)
-                )
-                MetricSummaryCard(
-                    count = bookmarkedCount,
-                    label = "Bookmarked",
-                    modifier = Modifier.weight(1f)
-                )
-                MetricSummaryCard(
-                    count = finishedCount,
-                    label = "Finished",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+        if (filteredBooks.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag("books_search_input"),
-                placeholder = {
-                    Text(
-                        text = "Search books...",
-                        fontFamily = InterFamily,
-                        fontSize = 13.5.sp,
-                        color = colors.textMuted
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = FluentIcons.Search24Regular,
-                        contentDescription = null,
-                        tint = colors.textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.borderSubtle,
-                    focusedContainerColor = colors.surfaceCard,
-                    unfocusedContainerColor = colors.surfaceCard
-                ),
-                singleLine = true
-            )
-
-            // Filter Chips
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                items(BookFilterChip.entries) { chip ->
-                    val isSelected = selectedFilter == chip
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (isSelected) colors.primary.copy(alpha = 0.2f) else colors.surfaceCard,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isSelected) colors.primary else colors.borderSubtle
-                        ),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable { selectedFilter = chip }
-                            .testTag("filter_chip_${chip.name}")
-                    ) {
-                        Text(
-                            text = chip.label,
-                            fontFamily = InterFamily,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            fontSize = 12.5.sp,
-                            color = if (isSelected) colors.primary else colors.textSecondary,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                    }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Book24Filled,
+                        contentDescription = null,
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank() || selectedSubject != "All") "No matches found" else "No $title yet",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank() || selectedSubject != "All") "Try adjusting your search or subject filter." else "Download or add materials to access them here offline.",
+                        fontFamily = InterFamily,
+                        fontSize = 13.sp,
+                        color = colors.textSecondary
+                    )
                 }
             }
-
-            // Books Grid
-            if (filteredBooks.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = FluentIcons.Book24Regular,
-                            contentDescription = null,
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(40.dp)
-                        )
-                        Text(
-                            text = if (searchQuery.isNotBlank()) "No books match \"$searchQuery\"" else "No books in this category",
-                            fontFamily = PoppinsFamily,
-                            fontSize = 14.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    items(filteredBooks, key = { it.id }) { book ->
-                        BookShelfGridCard(
-                            book = book,
-                            onClick = { onBookClick(book) },
-                            onLongClick = { onBookLongClick(book) }
-                        )
-                    }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 8.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = innerPadding.calculateTopPadding())
+            ) {
+                items(filteredBooks, key = { it.id }) { book ->
+                    BooksGridCard(
+                        book = book,
+                        onClick = { onBookClick(book) },
+                        onLongClick = { onBookLongClick(book) }
+                    )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MetricSummaryCard(
-    count: Int,
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    val colors = LocalMulberryColors.current
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = colors.surfaceCard,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = count.toString(),
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = colors.primary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = label,
-                fontFamily = InterFamily,
-                fontSize = 11.sp,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookShelfGridCard(
+private fun BooksGridCard(
     book: BookEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
-    val totalPages = book.pageCount.coerceAtLeast(1)
-    val currentPage = book.lastReadPage.coerceIn(0, totalPages)
-    val progressPercent = if (book.progressPercent > 0) {
-        book.progressPercent
-    } else if (currentPage > 0) {
-        ((currentPage.toFloat() / totalPages.toFloat()) * 100f).toInt().coerceIn(0, 100)
-    } else 0
 
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = colors.surfaceCard,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -418,13 +372,14 @@ private fun BookShelfGridCard(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .testTag("book_shelf_card_${book.id}")
+            .testTag("book_card_${book.id}")
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
-            // Book Cover Aspect Ratio
+            // Book cover
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = colors.primary.copy(alpha = 0.1f),
+                color = colors.primary.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.72f)
@@ -438,21 +393,18 @@ private fun BookShelfGridCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = FluentIcons.Book24Filled,
                             contentDescription = null,
                             tint = colors.primary,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = book.title,
@@ -464,27 +416,45 @@ private fun BookShelfGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             Text(
-                text = if (currentPage > 1) "PDF · Pg $currentPage" else "PDF · New",
+                text = book.author.ifEmpty { book.edition }.ifEmpty { "Medical" },
                 fontFamily = InterFamily,
-                fontSize = 11.5.sp,
-                color = colors.textSecondary
+                fontSize = 11.sp,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Reading Progress Bar
-            LinearProgressIndicator(
-                progress = { (progressPercent.toFloat() / 100f).coerceIn(0f, 1f) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp)),
-                color = colors.primary,
-                trackColor = colors.borderSubtle
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = book.subject.ifEmpty { "General" },
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 10.sp,
+                        color = colors.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                Text(
+                    text = "${book.pageCount}p",
+                    fontFamily = InterFamily,
+                    fontSize = 10.5.sp,
+                    color = colors.textMuted
+                )
+            }
         }
     }
 }

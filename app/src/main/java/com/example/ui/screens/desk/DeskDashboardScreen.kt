@@ -137,22 +137,14 @@ fun DeskDashboardScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     MulberryExpressiveLogo(size = 32.dp, showContainer = false)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Mulberry",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
-                            color = colors.textPrimary,
-                            letterSpacing = (-0.5).sp
-                        )
-                        Text(
-                            text = "Medical Reading Desk",
-                            fontFamily = InterFamily,
-                            fontSize = 11.5.sp,
-                            color = colors.textSecondary
-                        )
-                    }
+                    Text(
+                        text = "Desk",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        color = colors.textPrimary,
+                        letterSpacing = (-0.5).sp
+                    )
                 }
 
                 // Profile Avatar Button
@@ -359,7 +351,120 @@ fun DeskDashboardScreen(
                 }
             }
 
-            // 3. YOUR WEEK CARD
+            // 3. QUICK ACCESS SHORTCUTS (Moved directly after Pick up where you left off)
+            item(key = "quick_access_header") {
+                Text(
+                    text = "QUICK ACCESS",
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.8.sp,
+                    color = colors.primary
+                )
+            }
+
+            item(key = "quick_access_cards") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Shortcut 1: My Library
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = colors.surfaceCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { onQuickAccessMyLibrary() }
+                            .testTag("quick_access_my_library")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.primary.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.Book24Filled,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "My Library",
+                                    fontFamily = PoppinsFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = colors.textPrimary
+                                )
+                                Text(
+                                    text = "Books & files",
+                                    fontFamily = InterFamily,
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Shortcut 2: Study Planner
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = colors.surfaceCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { onQuickAccessStudyPlanner() }
+                            .testTag("quick_access_study_planner")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.primary.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.CalendarLtr24Filled,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Study Planner",
+                                    fontFamily = PoppinsFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = colors.textPrimary
+                                )
+                                Text(
+                                    text = "Schedule & goals",
+                                    fontFamily = InterFamily,
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. YOUR WEEK CARD
             item(key = "your_week_card") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -585,120 +690,7 @@ fun DeskDashboardScreen(
                 }
             }
 
-            // 5. QUICK ACCESS SHORTCUTS
-            item(key = "quick_access_header") {
-                Text(
-                    text = "QUICK ACCESS",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    letterSpacing = 0.8.sp,
-                    color = colors.primary
-                )
-            }
-
-            item(key = "quick_access_cards") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Shortcut 1: My Library
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.surfaceCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable { onQuickAccessMyLibrary() }
-                            .testTag("quick_access_my_library")
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(colors.primary.copy(alpha = 0.14f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = FluentIcons.Book24Filled,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "My Library",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = colors.textPrimary
-                                )
-                                Text(
-                                    text = "Books & files",
-                                    fontFamily = InterFamily,
-                                    fontSize = 12.sp,
-                                    color = colors.textSecondary
-                                )
-                            }
-                        }
-                    }
-
-                    // Shortcut 2: Study Planner
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.surfaceCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderSubtle),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable { onQuickAccessStudyPlanner() }
-                            .testTag("quick_access_study_planner")
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(colors.primary.copy(alpha = 0.14f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = FluentIcons.CalendarLtr24Filled,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "Study Planner",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = colors.textPrimary
-                                )
-                                Text(
-                                    text = "Schedule & goals",
-                                    fontFamily = InterFamily,
-                                    fontSize = 12.sp,
-                                    color = colors.textSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 6. DONATION PROMPT
+            // 5. DONATION PROMPT
             item(key = "donation_card") {
                 Surface(
                     shape = RoundedCornerShape(16.dp),

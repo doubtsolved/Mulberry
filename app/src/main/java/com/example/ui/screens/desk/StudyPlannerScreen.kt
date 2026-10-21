@@ -43,11 +43,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.model.BookEntity
 import com.example.data.schedule.model.ReadingSession
 import com.example.ui.components.FluentIcons
 import com.example.ui.theme.InterFamily
@@ -64,16 +67,20 @@ data class PlannerDay(
     val dayNumber: Int,
     val epochMillis: Long,
     val isToday: Boolean,
+    val isFuture: Boolean,
     val isCompleted: Boolean
 )
 
 /**
  * Study Planner Screen (Wireframe 04)
+ * Clamped so users cannot navigate beyond the present date.
+ * Features compact schedule cards per ASCII specification.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudyPlannerScreen(
     deskViewModel: DeskScheduleViewModel,
+    downloadedBooks: List<BookEntity> = emptyList(),
     onBackClick: () -> Unit,
     onOpenSession: (ReadingSession) -> Unit,
     onAddSessionClick: () -> Unit,
@@ -84,8 +91,21 @@ fun StudyPlannerScreen(
     val activeTodaySessions by deskViewModel.activeTodaySessions.collectAsState()
     val completedTodaySessions by deskViewModel.completedTodaySessions.collectAsState()
 
-    var selectedDayIndex by remember { mutableIntStateOf(1) } // Default to Tuesday / Today
-    var weekOffset by remember { mutableIntStateOf(0) }
+    // Determine current day of week index: Mon=0, Tue=1, ..., Sun=6
+    val currentCal = Calendar.getInstance()
+    val todayDayOfWeekIndex = when (currentCal.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.MONDAY -> 0
+        Calendar.TUESDAY -> 1
+        Calendar.WEDNESDAY -> 2
+        Calendar.THURSDAY -> 3
+        Calendar.FRIDAY -> 4
+        Calendar.SATURDAY -> 5
+        Calendar.SUNDAY -> 6
+        else -> 0
+    }
+
+    var selectedDayIndex by remember { mutableIntStateOf(todayDayOfWeekIndex) }
+    var weekOffset by remember { mutableIntStateOf(0) } // 0 = present week, negative = past weeks
 
     // Generate 7-day strip based on current week and weekOffset
     val weekDays = remember(weekOffset) {
@@ -100,6 +120,7 @@ fun StudyPlannerScreen(
         for (i in 0 until 7) {
             val isToday = cal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
                     cal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
+            val isFuture = if (weekOffset == 0) i > todayDayOfWeekIndex else weekOffset > 0
 
             list.add(
                 PlannerDay(
@@ -107,7 +128,8 @@ fun StudyPlannerScreen(
                     dayNumber = cal.get(Calendar.DAY_OF_MONTH),
                     epochMillis = cal.timeInMillis,
                     isToday = isToday,
-                    isCompleted = i == 0 // Mock completed for earlier days or derive
+                    isFuture = isFuture,
+                    isCompleted = i < todayDayOfWeekIndex && weekOffset == 0 || weekOffset < 0
                 )
             )
             cal.add(Calendar.DAY_OF_MONTH, 1)
@@ -177,7 +199,7 @@ fun StudyPlannerScreen(
                 }
 
                 Text(
-                    text = "Your week, in focus • October 19–25, 2026",
+                    text = if (weekOffset == 0) "Current week • in focus" else "Week past (${-weekOffset}w ago)",
                     fontFamily = InterFamily,
                     fontSize = 13.sp,
                     color = colors.textSecondary,
@@ -226,7 +248,7 @@ fun StudyPlannerScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. Weekly Reading Goal Card
             item(key = "weekly_reading_goal_card") {
@@ -239,14 +261,14 @@ fun StudyPlannerScreen(
                         .testTag("planner_weekly_goal_card")
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
                             text = "Weekly reading goal",
                             fontFamily = InterFamily,
                             fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             color = colors.textSecondary
                         )
 
@@ -255,20 +277,18 @@ fun StudyPlannerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    text = "$completedHours / ${goalHours.toInt()} hours",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 24.sp,
-                                    color = colors.textPrimary
-                                )
-                            }
+                            Text(
+                                text = "$completedHours / ${goalHours.toInt()} hours",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                color = colors.textPrimary
+                            )
                             Text(
                                 text = "($percent%)",
                                 fontFamily = PoppinsFamily,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp,
+                                fontSize = 15.sp,
                                 color = colors.primary
                             )
                         }
@@ -278,7 +298,7 @@ fun StudyPlannerScreen(
                             progress = { (percent.toFloat() / 100f).coerceIn(0f, 1f) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(8.dp)
+                                .height(7.dp)
                                 .clip(RoundedCornerShape(4.dp)),
                             color = colors.primary,
                             trackColor = colors.borderSubtle
@@ -291,13 +311,13 @@ fun StudyPlannerScreen(
                             Text(
                                 text = "Sessions: $completedSessionsCount of $totalSessions",
                                 fontFamily = InterFamily,
-                                fontSize = 12.5.sp,
+                                fontSize = 12.sp,
                                 color = colors.textSecondary
                             )
                             Text(
                                 text = "Remaining: 2h 30m",
                                 fontFamily = InterFamily,
-                                fontSize = 12.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colors.primary
                             )
@@ -306,7 +326,7 @@ fun StudyPlannerScreen(
                 }
             }
 
-            // 2. THIS WEEK Selector Strip
+            // 2. THIS WEEK Selector Strip (Clamped so cannot go beyond present week)
             item(key = "this_week_header") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -314,7 +334,7 @@ fun StudyPlannerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "THIS WEEK",
+                        text = if (weekOffset == 0) "THIS WEEK" else "PAST WEEK",
                         fontFamily = PoppinsFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -323,6 +343,7 @@ fun StudyPlannerScreen(
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Previous Week (always allowed)
                         IconButton(
                             onClick = { weekOffset -= 1 },
                             modifier = Modifier.size(28.dp)
@@ -334,14 +355,22 @@ fun StudyPlannerScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
+
+                        // Next Week: Clamped! Never allow week scroll beyond present week (weekOffset >= 0)
+                        val canAdvanceWeek = weekOffset < 0
                         IconButton(
-                            onClick = { weekOffset += 1 },
+                            onClick = {
+                                if (canAdvanceWeek) {
+                                    weekOffset = (weekOffset + 1).coerceAtMost(0)
+                                }
+                            },
+                            enabled = canAdvanceWeek,
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.ChevronRight24Regular,
                                 contentDescription = "Next week",
-                                tint = colors.textSecondary,
+                                tint = if (canAdvanceWeek) colors.textSecondary else colors.textMuted.copy(alpha = 0.25f),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -357,18 +386,30 @@ fun StudyPlannerScreen(
                     items(weekDays.indices.toList()) { index ->
                         val day = weekDays[index]
                         val isSelected = selectedDayIndex == index
+                        // Cannot select future dates when in present week
+                        val isClickable = !day.isFuture
 
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) colors.primary else colors.surfaceCard,
+                            color = when {
+                                isSelected -> colors.primary
+                                day.isFuture -> colors.surfaceCard.copy(alpha = 0.45f)
+                                else -> colors.surfaceCard
+                            },
                             border = androidx.compose.foundation.BorderStroke(
                                 1.dp,
-                                if (isSelected) colors.primary else colors.borderSubtle
+                                when {
+                                    isSelected -> colors.primary
+                                    day.isFuture -> colors.borderSubtle.copy(alpha = 0.3f)
+                                    else -> colors.borderSubtle
+                                }
                             ),
                             modifier = Modifier
                                 .width(56.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { selectedDayIndex = index }
+                                .clickable(enabled = isClickable) {
+                                    selectedDayIndex = index
+                                }
                                 .testTag("planner_day_chip_${day.dayNumber}")
                         ) {
                             Column(
@@ -381,24 +422,37 @@ fun StudyPlannerScreen(
                                     fontFamily = InterFamily,
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 11.sp,
-                                    color = if (isSelected) colors.onPrimary.copy(alpha = 0.8f) else colors.textMuted
+                                    color = when {
+                                        isSelected -> colors.onPrimary.copy(alpha = 0.85f)
+                                        day.isFuture -> colors.textMuted.copy(alpha = 0.4f)
+                                        else -> colors.textMuted
+                                    }
                                 )
                                 Text(
                                     text = day.dayNumber.toString(),
                                     fontFamily = PoppinsFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
-                                    color = if (isSelected) colors.onPrimary else colors.textPrimary
+                                    color = when {
+                                        isSelected -> colors.onPrimary
+                                        day.isFuture -> colors.textMuted.copy(alpha = 0.4f)
+                                        else -> colors.textPrimary
+                                    }
                                 )
                                 Text(
                                     text = when {
+                                        day.isFuture -> "·"
                                         day.isCompleted -> "✓"
                                         day.isToday -> "●"
                                         else -> "○"
                                     },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) colors.onPrimary else colors.primary
+                                    color = when {
+                                        isSelected -> colors.onPrimary
+                                        day.isFuture -> colors.textMuted.copy(alpha = 0.4f)
+                                        else -> colors.primary
+                                    }
                                 )
                             }
                         }
@@ -406,20 +460,21 @@ fun StudyPlannerScreen(
                 }
             }
 
-            // 3. DAILY SESSION LIST
+            // 3. DAILY SESSION LIST (Compact Schedule Cards)
             item(key = "daily_plan_header") {
                 Column {
                     Text(
                         text = "${selectedDay.dayName}'S PLAN",
                         fontFamily = PoppinsFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 13.5.sp,
+                        letterSpacing = 0.5.sp,
                         color = colors.textPrimary
                     )
                     Text(
                         text = "Sessions for this study block",
                         fontFamily = InterFamily,
-                        fontSize = 12.5.sp,
+                        fontSize = 12.sp,
                         color = colors.textSecondary
                     )
                 }
@@ -434,7 +489,7 @@ fun StudyPlannerScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(24.dp),
+                            modifier = Modifier.padding(22.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -442,7 +497,7 @@ fun StudyPlannerScreen(
                                 imageVector = FluentIcons.CalendarAdd24Regular,
                                 contentDescription = null,
                                 tint = colors.textMuted,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                             Text(
                                 text = "No sessions planned yet",
@@ -462,8 +517,13 @@ fun StudyPlannerScreen(
                 }
             } else {
                 items(allSessions, key = { it.id }) { session ->
-                    DailyTimelineSessionCard(
+                    val matchedBook = downloadedBooks.find {
+                        it.title.equals(session.bookTitle, ignoreCase = true) ||
+                                (session.bookFileName.isNotBlank() && it.binFilePath.contains(session.bookFileName))
+                    }
+                    CompactDailyScheduleCard(
                         session = session,
+                        coverUrl = matchedBook?.coverUrl ?: "",
                         onStartSession = { onOpenSession(session) },
                         onToggleComplete = { deskViewModel.toggleCompleted(session.id) }
                     )
@@ -471,157 +531,158 @@ fun StudyPlannerScreen(
             }
 
             item(key = "bottom_space") {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
 }
 
+/**
+ * Compact Schedule Card
+ * Specification:
+ * ┌────────────────────────────────────────────────────────┐
+ * │ [COVER] Name of book                                   │
+ * │         additional text                       [▶ Read] │
+ * └────────────────────────────────────────────────────────┘
+ */
 @Composable
-private fun DailyTimelineSessionCard(
+private fun CompactDailyScheduleCard(
     session: ReadingSession,
+    coverUrl: String = "",
     onStartSession: () -> Unit,
     onToggleComplete: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    val displayTime = remember(session.scheduledEpochMillis) {
-        if (session.scheduledEpochMillis > 0L) timeFormat.format(Date(session.scheduledEpochMillis)) else "09:00"
-    }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = colors.surfaceCard,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (session.isCompleted) colors.primary.copy(alpha = 0.35f) else colors.borderSubtle
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onStartSession() }
+            .testTag("timeline_session_${session.id}")
     ) {
-        // Left Time Marker
-        Text(
-            text = displayTime,
-            fontFamily = InterFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            color = colors.textMuted,
+        Row(
             modifier = Modifier
-                .width(44.dp)
-                .padding(top = 14.dp)
-        )
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        // Session Card
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surfaceCard,
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (session.isCompleted) colors.primary.copy(alpha = 0.4f) else colors.borderSubtle
-            ),
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable { onStartSession() }
-                .testTag("timeline_session_${session.id}")
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Book cover thumbnail on the left
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = colors.primary.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
+                modifier = Modifier
+                    .size(width = 38.dp, height = 50.dp)
+                    .clip(RoundedCornerShape(8.dp))
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = colors.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            Text(
-                                text = "BOOK",
-                                fontFamily = InterFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp,
-                                color = colors.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        Text(
-                            text = session.bookTitle,
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.5.sp,
-                            color = colors.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                if (coverUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = session.bookTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = FluentIcons.Book24Filled,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-
-                    Text(
-                        text = "Pages ${session.startPage}–${session.endPage}",
-                        fontFamily = InterFamily,
-                        fontSize = 11.5.sp,
-                        color = colors.textSecondary
-                    )
                 }
+            }
 
-                if (session.microNote.isNotBlank()) {
-                    Text(
-                        text = session.microNote,
-                        fontFamily = InterFamily,
-                        fontSize = 12.sp,
-                        color = colors.textSecondary,
-                        maxLines = 2
-                    )
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Center: Name of book & additional text
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = session.bookTitle,
+                    fontFamily = PoppinsFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                val additionalText = if (session.microNote.isNotBlank()) {
+                    "${session.microNote} · P.${session.startPage}–${session.endPage}"
+                } else {
+                    "Pages ${session.startPage}–${session.endPage} · ${session.estimatedMinutes}m"
                 }
+                Text(
+                    text = additionalText,
+                    fontFamily = InterFamily,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Right: Read icon / complete button
+            if (session.isCompleted) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.primary.copy(alpha = 0.14f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onToggleComplete() }
                 ) {
-                    Text(
-                        text = "${session.totalPages} pages",
-                        fontFamily = InterFamily,
-                        fontSize = 12.sp,
-                        color = colors.textMuted
-                    )
-
-                    if (session.isCompleted) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = colors.primary.copy(alpha = 0.15f),
-                            modifier = Modifier.clickable { onToggleComplete() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "✓ Completed",
-                                    fontFamily = InterFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = colors.primary
-                                )
-                            }
-                        }
-                    } else {
-                        Button(
-                            onClick = onStartSession,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.primary,
-                                contentColor = colors.onPrimary
-                            ),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Text(
-                                text = "▶ Start session",
-                                fontFamily = InterFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            )
-                        }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "✓ Done",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            color = colors.primary
+                        )
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onStartSession() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = FluentIcons.BookOpen24Regular,
+                            contentDescription = "Read",
+                            tint = colors.onPrimary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Read",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            color = colors.onPrimary
+                        )
                     }
                 }
             }

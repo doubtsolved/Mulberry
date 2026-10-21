@@ -29,6 +29,7 @@ import com.example.data.schedule.model.ReadingSession
 import com.example.ui.components.SharedBookActionModal
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.screens.UserProfileBottomSheet
+import com.example.util.CustomCollectionItem
 import com.example.util.MulberryHistoryManager
 import com.example.util.MulberryStorageManager
 import com.example.viewmodel.DeskScheduleViewModel
@@ -39,24 +40,32 @@ import java.io.File
 enum class DeskDestination {
     DASHBOARD,
     MY_LIBRARY,
-    BOOKS_COLLECTION,
+    TYPE_FOLDER,
+    COLLECTION_DETAIL,
     STUDY_PLANNER
 }
 
 /**
- * Root coordinator for Desk and its sub-screens (My Library, Books Collection, Study Planner).
+ * Root coordinator for Desk and its sub-screens (My Library, Type Folders, Collections, Study Planner).
  * Maintains navigation context, Shared Book-Action Modal, and telemetry sync in /sdcard/Mulberry/.history/.
+ * Notifies parent whether user is at root desk home to disable horizontal swipe gestures in sub-screens.
  */
 @Composable
 fun DeskRootScreen(
     modifier: Modifier = Modifier,
     deskViewModel: DeskScheduleViewModel = viewModel(),
+    onDeskAtHomeChanged: (Boolean) -> Unit = {},
     onNavigateToLibrary: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     var currentDestination by remember { mutableStateOf(DeskDestination.DASHBOARD) }
+
+    // Notify parent about home vs sub-screen state
+    LaunchedEffect(currentDestination) {
+        onDeskAtHomeChanged(currentDestination == DeskDestination.DASHBOARD)
+    }
 
     val downloadedBooks by deskViewModel.downloadedBooks.collectAsState()
     val allCatalogBooks by deskViewModel.allCatalogBooks.collectAsState()
@@ -65,6 +74,12 @@ fun DeskRootScreen(
     val userProfileRepo = remember { com.example.data.repository.UserProfileRepository.getInstance(context) }
     val userProfile by userProfileRepo.userProfile.collectAsState()
     var showProfileModal by remember { mutableStateOf(false) }
+
+    // Dynamic type folder and collection state
+    var selectedTypeName by remember { mutableStateOf("Books") }
+    var selectedTypeBooks by remember { mutableStateOf<List<BookEntity>>(emptyList()) }
+    var selectedCollection by remember { mutableStateOf<CustomCollectionItem?>(null) }
+    var selectedCollectionBooks by remember { mutableStateOf<List<BookEntity>>(emptyList()) }
 
     // Shared Book-Action Modal state
     var selectedBookForAction by remember { mutableStateOf<BookEntity?>(null) }
@@ -83,7 +98,8 @@ fun DeskRootScreen(
     // Contextual Back Navigation for sub-screens within Desk
     BackHandler(enabled = currentDestination != DeskDestination.DASHBOARD) {
         when (currentDestination) {
-            DeskDestination.BOOKS_COLLECTION -> currentDestination = DeskDestination.MY_LIBRARY
+            DeskDestination.TYPE_FOLDER -> currentDestination = DeskDestination.MY_LIBRARY
+            DeskDestination.COLLECTION_DETAIL -> currentDestination = DeskDestination.MY_LIBRARY
             DeskDestination.MY_LIBRARY -> currentDestination = DeskDestination.DASHBOARD
             DeskDestination.STUDY_PLANNER -> currentDestination = DeskDestination.DASHBOARD
             DeskDestination.DASHBOARD -> {}
@@ -169,7 +185,16 @@ fun DeskRootScreen(
                     MyLibraryScreen(
                         downloadedBooks = downloadedBooks,
                         onBackClick = { currentDestination = DeskDestination.DASHBOARD },
-                        onOpenBooksCollection = { currentDestination = DeskDestination.BOOKS_COLLECTION },
+                        onOpenTypeFolder = { typeName, booksForType ->
+                            selectedTypeName = typeName
+                            selectedTypeBooks = booksForType
+                            currentDestination = DeskDestination.TYPE_FOLDER
+                        },
+                        onOpenCollection = { col, colBooks ->
+                            selectedCollection = col
+                            selectedCollectionBooks = colBooks
+                            currentDestination = DeskDestination.COLLECTION_DETAIL
+                        },
                         onOpenBook = onOpenBook,
                         onBookActionClick = { selectedBookForAction = it },
                         onImportFilesClick = {
@@ -179,9 +204,33 @@ fun DeskRootScreen(
                     )
                 }
 
-                DeskDestination.BOOKS_COLLECTION -> {
+                DeskDestination.TYPE_FOLDER -> {
                     BooksCollectionScreen(
-                        books = downloadedBooks,
+                        books = selectedTypeBooks,
+                        title = selectedTypeName,
+                        parentCategory = "DOWNLOADED",
+                        onBackClick = { currentDestination = DeskDestination.MY_LIBRARY },
+                        onBookClick = { selectedBookForAction = it },
+                        onBookLongClick = { selectedBookForAction = it },
+                        onAddBooksClick = onNavigateToLibrary,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                DeskDestination.COLLECTION_DETAIL -> {
+                    val activeCollection = selectedCollection
+                    val colTitle = activeCollection?.name ?: "Collection"
+                    val itemsToShow = selectedCollectionBooks.ifEmpty {
+                        downloadedBooks.filter { b ->
+                            val slug = b.slug.ifEmpty { "book_${b.id}" }
+                            activeCollection?.bookSlugs?.contains(slug) == true
+                        }
+                    }
+
+                    BooksCollectionScreen(
+                        books = itemsToShow,
+                        title = colTitle,
+                        parentCategory = "COLLECTION",
                         onBackClick = { currentDestination = DeskDestination.MY_LIBRARY },
                         onBookClick = { selectedBookForAction = it },
                         onBookLongClick = { selectedBookForAction = it },
@@ -193,6 +242,7 @@ fun DeskRootScreen(
                 DeskDestination.STUDY_PLANNER -> {
                     StudyPlannerScreen(
                         deskViewModel = deskViewModel,
+                        downloadedBooks = downloadedBooks,
                         onBackClick = { currentDestination = DeskDestination.DASHBOARD },
                         onOpenSession = onOpenSession,
                         onAddSessionClick = {
@@ -232,15 +282,8 @@ fun DeskRootScreen(
                     )
                 },
                 onAddToCollection = { targetBook ->
-                    Toast.makeText(context, "Added \"${targetBook.title}\" to collection", Toast.LENGTH_SHORT).show()
-                    coroutineScope.launch(Dispatchers.IO) {
-                        MulberryHistoryManager.recordMovement(
-                            context = context,
-                            eventType = "ADD_TO_COLLECTION",
-                            book = targetBook,
-                            collectionName = "First Year MBBS"
-                        )
-                    }
+                    // Re-sync collection items
+                    MulberryHistoryManager.loadCollections(context)
                 },
                 onViewDetails = { targetBook ->
                     Toast.makeText(

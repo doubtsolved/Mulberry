@@ -301,6 +301,38 @@ object MulberryStorageManager {
     }
 
     /**
+     * Converts DownloadedBookMetadata to BookEntity for unified Compose rendering.
+     */
+    fun DownloadedBookMetadata.toBookEntity(): BookEntity {
+        return BookEntity(
+            id = id.hashCode(),
+            title = title,
+            author = author,
+            edition = edition,
+            prof = prof,
+            year = year,
+            subject = subject,
+            type = type,
+            tagsCsv = tags.joinToString(","),
+            pageCount = totalPages,
+            sizeMb = sizeMb,
+            coverUrl = coverUrl,
+            binFilePath = localPath,
+            uriString = localPath,
+            slug = id,
+            isDownloaded = true
+        )
+    }
+
+    /**
+     * Loads downloaded books directly from /sdcard/Mulberry/downloaded_books.json as BookEntity list.
+     */
+    fun loadDownloadedBooksAsEntities(context: Context): List<BookEntity> {
+        val index = loadTrackingIndex(context)
+        return index.books.map { it.toBookEntity() }
+    }
+
+    /**
      * Atomically writes updated index to /sdcard/Mulberry/downloaded_books.json.
      */
     fun saveTrackingIndex(context: Context, index: DownloadedBooksIndex) {

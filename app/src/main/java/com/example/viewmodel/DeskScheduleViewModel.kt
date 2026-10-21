@@ -39,10 +39,23 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
 
     private val downloadManager = com.example.util.BookDownloadManager.getInstance(app, db.bookDao())
 
-    val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().stateIn(
+    val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().map { roomBooks ->
+        val jsonBooks = com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app)
+        if (jsonBooks.isNotEmpty()) {
+            jsonBooks
+        } else if (roomBooks.isNotEmpty()) {
+            for (b in roomBooks) {
+                val bin = File(b.binFilePath)
+                com.example.util.MulberryStorageManager.recordDownloadedBook(app, b, bin)
+            }
+            com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app).ifEmpty { roomBooks }
+        } else {
+            emptyList()
+        }
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
+        initialValue = com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app)
     )
 
     val allCatalogBooks: StateFlow<List<BookEntity>> = db.bookDao().getAllBooks().stateIn(
@@ -53,6 +66,7 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
 
     fun deleteDownloadedBook(book: BookEntity) {
         viewModelScope.launch {
+            com.example.util.MulberryStorageManager.removeDownloadedBook(app, book.slug.ifEmpty { "book_${book.id}" })
             downloadManager.deleteDownload(book)
         }
     }
