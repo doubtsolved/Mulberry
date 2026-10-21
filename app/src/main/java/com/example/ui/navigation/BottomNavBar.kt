@@ -47,23 +47,17 @@ enum class MulberryTab(
     val regularIcon: ImageVector,
     val filledIcon: ImageVector
 ) {
-    LIBRARY(
-        title = "Library",
-        testTag = "nav_tab_library",
-        regularIcon = FluentIcons.Book24Regular,
-        filledIcon = FluentIcons.Book24Filled
-    ),
-    SNIPS(
-        title = "Snips",
-        testTag = "nav_tab_snips",
-        regularIcon = FluentIcons.Scissors24Regular,
-        filledIcon = FluentIcons.Scissors24Filled
-    ),
     DESK(
         title = "Desk",
         testTag = "nav_tab_desk",
         regularIcon = FluentIcons.CalendarLtr24Regular,
         filledIcon = FluentIcons.CalendarLtr24Filled
+    ),
+    LIBRARY(
+        title = "Library",
+        testTag = "nav_tab_library",
+        regularIcon = FluentIcons.Book24Regular,
+        filledIcon = FluentIcons.Book24Filled
     ),
     SETTINGS(
         title = "Settings",
@@ -79,9 +73,8 @@ data class NavTabConfig(
 )
 
 val DEFAULT_TAB_CONFIGS = listOf(
-    NavTabConfig(MulberryTab.LIBRARY, isVisible = true),
-    NavTabConfig(MulberryTab.SNIPS, isVisible = true),
     NavTabConfig(MulberryTab.DESK, isVisible = true),
+    NavTabConfig(MulberryTab.LIBRARY, isVisible = true),
     NavTabConfig(MulberryTab.SETTINGS, isVisible = true)
 )
 

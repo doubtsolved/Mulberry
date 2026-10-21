@@ -874,18 +874,53 @@ class ReaderActivity : AppCompatActivity() {
                     e.printStackTrace()
                 }
 
-                // If launched from a scheduled reading session, mark completed in ScheduleRepository
-                val currentSessionId = sessionId
-                if (!currentSessionId.isNullOrBlank()) {
-                    val readCount = if (sessionStartPage > 0) {
-                        (maxPageReached - sessionStartPage + 1).coerceAtLeast(1)
-                    } else 1
-                    try {
+                val book = if (bookId != -1) bookDao.getBookById(bookId) else bookDao.getAllBooksSync().find { it.uriString == bookPath }
+                val bookSubject = book?.subject?.takeIf { it.isNotBlank() && !it.equals("General", ignoreCase = true) } ?: "Medical Core"
+                val sessionDurationMins = if (sessionStartTimeMs > 0L) {
+                    ((System.currentTimeMillis() - sessionStartTimeMs) / 60000L).toInt().coerceAtLeast(1)
+                } else 1
+                val sessionPagesRead = (maxPageReached - initialOpenedPage + 1).coerceAtLeast(1)
+                val effectiveTitle = bookTitle.ifEmpty { book?.title ?: "Medical Textbook" }
+
+                // 1. Record telemetry to permanent StudyMetricsManager
+                try {
+                    com.example.data.analytics.StudyMetricsManager.getInstance(applicationContext).recordStudySession(
+                        bookTitle = effectiveTitle,
+                        subject = bookSubject,
+                        durationMinutes = sessionDurationMins,
+                        pagesRead = sessionPagesRead
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // 2. Ambient schedule reconciliation: any reading updates matching schedules
+                try {
+                    val currentSessionId = sessionId
+                    if (!currentSessionId.isNullOrBlank()) {
                         com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
-                            .markCompleted(currentSessionId, readCount)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                            .updateSessionProgress(currentSessionId, maxPageReached)
                     }
+                    if (effectiveTitle.isNotBlank()) {
+                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                            .reconcileReadingProgress(effectiveTitle, maxPageReached)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // 3. User movement tracking in /sdcard/Mulberry/.history/activity_events.json
+                try {
+                    com.example.util.MulberryHistoryManager.recordMovement(
+                        context = applicationContext,
+                        eventType = "READING_PROGRESS",
+                        book = book,
+                        page = currentPage,
+                        durationMinutes = sessionDurationMins,
+                        extraMetadata = mapOf("pagesRead" to sessionPagesRead.toString())
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

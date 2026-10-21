@@ -52,7 +52,6 @@ import com.example.ui.screens.AgendaScreen
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.SettingsScreen
-import com.example.ui.screens.SnipsScreen
 import com.example.ui.screens.PermissionGatewayScreen
 import com.example.ui.screens.desk.DeskRootScreen
 import com.example.ui.theme.MulberryTheme
@@ -226,12 +225,11 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Priority 3: Destination Tab (e.g. "desk", "snips", "agenda", "library", "settings")
+        // Priority 3: Destination Tab (e.g. "desk", "library", "settings")
         val destination = extras.getString("destination") ?: extras.getString("tab") ?: extras.getString("route")
         if (!destination.isNullOrBlank()) {
             when {
                 destination.contains("desk", ignoreCase = true) || destination.contains("agenda", ignoreCase = true) -> viewModel.setTab(MulberryTab.DESK)
-                destination.contains("snip", ignoreCase = true) -> viewModel.setTab(MulberryTab.SNIPS)
                 destination.contains("setting", ignoreCase = true) -> viewModel.setTab(MulberryTab.SETTINGS)
                 destination.contains("library", ignoreCase = true) -> viewModel.setTab(MulberryTab.LIBRARY)
             }
@@ -271,14 +269,14 @@ fun MulberryApp(viewModel: MulberryViewModel) {
         } catch (_: Exception) {}
     }
 
-    // System Back Navigation: Switch non-library tabs back to Library
-    BackHandler(enabled = !isReaderOpen && currentTab != MulberryTab.LIBRARY) {
-        viewModel.setTab(MulberryTab.LIBRARY)
+    // System Back Navigation: Switch non-desk tabs back to Desk
+    BackHandler(enabled = !isReaderOpen && currentTab != MulberryTab.DESK) {
+        viewModel.setTab(MulberryTab.DESK)
     }
 
-    // System Back Navigation: On root Library tab, require double press to exit
-    val isAtRootLibrary = !isReaderOpen && currentTab == MulberryTab.LIBRARY && activeBreadcrumbs.size <= 1 && activeFolderFilter == null
-    BackHandler(enabled = isAtRootLibrary) {
+    // System Back Navigation: On root Desk tab, require double press to exit
+    val isAtRootDesk = !isReaderOpen && currentTab == MulberryTab.DESK
+    BackHandler(enabled = isAtRootDesk) {
         val now = System.currentTimeMillis()
         if (now - lastBackPressTime < 2000L) {
             (context as? Activity)?.finish()
@@ -305,8 +303,6 @@ fun MulberryApp(viewModel: MulberryViewModel) {
     }
 
     // Synchronize sideways user sliding gestures back to viewModel's currentTab.
-    // By observing settledPage, we only update the selected tab AFTER a swipe finishes,
-    // avoiding race conditions during multi-page programmatic navigation.
     LaunchedEffect(pagerState, visibleTabs) {
         snapshotFlow { pagerState.settledPage }
             .collect { settledIndex ->
@@ -348,17 +344,14 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         modifier = Modifier.fillMaxSize(),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
-                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
+                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.DESK
                         when (tab) {
+                            MulberryTab.DESK -> DeskRootScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
+                            )
                             MulberryTab.LIBRARY -> LibraryScreen(
                                 viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            MulberryTab.SNIPS -> SnipsScreen(
-                                viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            MulberryTab.DESK -> DeskRootScreen(
                                 modifier = Modifier.fillMaxSize()
                             )
                             MulberryTab.SETTINGS -> SettingsScreen(
@@ -401,17 +394,14 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                         modifier = Modifier.fillMaxSize(),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
-                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.LIBRARY
+                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.DESK
                         when (tab) {
+                            MulberryTab.DESK -> DeskRootScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
+                            )
                             MulberryTab.LIBRARY -> LibraryScreen(
                                 viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            MulberryTab.SNIPS -> SnipsScreen(
-                                viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            MulberryTab.DESK -> DeskRootScreen(
                                 modifier = Modifier.fillMaxSize()
                             )
                             MulberryTab.SETTINGS -> SettingsScreen(

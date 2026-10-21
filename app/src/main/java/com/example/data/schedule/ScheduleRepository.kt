@@ -98,14 +98,17 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 return ReadingSession()
             }
             val obj = json.asJsonObject
+            val start = obj.get("startPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1
+            val current = obj.get("currentPageReached")?.let { runCatching { it.asInt }.getOrDefault(start) } ?: start
             return ReadingSession(
                 id = obj.get("id")?.let { runCatching { it.asString }.getOrNull() } ?: UUID.randomUUID().toString(),
                 vaultPath = obj.get("vaultPath")?.let { runCatching { it.asString }.getOrNull() } ?: "",
                 bookFileName = obj.get("bookFileName")?.let { runCatching { it.asString }.getOrNull() } ?: "",
                 bookRelativePath = obj.get("bookRelativePath")?.let { runCatching { it.asString }.getOrNull() } ?: "",
                 bookTitle = obj.get("bookTitle")?.let { runCatching { it.asString }.getOrNull() } ?: "",
-                startPage = obj.get("startPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1,
+                startPage = start,
                 endPage = obj.get("endPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1,
+                currentPageReached = current,
                 scheduledEpochMillis = obj.get("scheduledEpochMillis")?.let { runCatching { it.asLong }.getOrDefault(0L) } ?: 0L,
                 reminderMinutesBefore = obj.get("reminderMinutesBefore")?.let { runCatching { it.asInt }.getOrDefault(15) } ?: 15,
                 microNote = obj.get("microNote")?.let { runCatching { it.asString }.getOrNull() } ?: "",
@@ -377,6 +380,72 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
             ScheduleAlarmScheduler.cancelAlarm(appContext, target)
             persistToDisk(current.copy(sessions = updatedSessions))
+        }
+    }
+
+    suspend fun updateSessionProgress(sessionId: String, pageReached: Int): Unit = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val current = _scheduleState.value
+            val target = current.sessions.find { it.id == sessionId } ?: return@withLock
+            val newPageReached = maxOf(target.currentPageReached, pageReached)
+            val isNowComplete = newPageReached >= target.endPage
+            val now = System.currentTimeMillis()
+
+            val updatedSession = target.copy(
+                currentPageReached = newPageReached,
+                isCompleted = isNowComplete,
+                completedEpochMillis = if (isNowComplete) now else target.completedEpochMillis,
+                actualPagesRead = if (isNowComplete) target.totalPages else target.actualPagesRead
+            )
+
+            val updatedSessions = current.sessions.map {
+                if (it.id == sessionId) updatedSession else it
+            }
+
+            if (isNowComplete) {
+                ScheduleAlarmScheduler.cancelAlarm(appContext, target)
+            }
+            persistToDisk(current.copy(sessions = updatedSessions))
+            Log.d(TAG, "Updated progress for session $sessionId: page $newPageReached (completed=$isNowComplete)")
+        }
+    }
+
+    suspend fun reconcileReadingProgress(bookTitle: String, pageReached: Int): Unit = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val current = _scheduleState.value
+            var changed = false
+            val now = System.currentTimeMillis()
+
+            val updatedSessions = current.sessions.map { session ->
+                val matchesBook = session.bookTitle.equals(bookTitle, ignoreCase = true) ||
+                        (session.bookFileName.isNotBlank() && bookTitle.contains(session.bookFileName.removeSuffix(".pdf"), ignoreCase = true))
+
+                if (matchesBook && !session.isCompleted) {
+                    val newPageReached = maxOf(session.currentPageReached, pageReached)
+                    val isNowComplete = newPageReached >= session.endPage
+                    if (newPageReached != session.currentPageReached || isNowComplete) {
+                        changed = true
+                        if (isNowComplete) {
+                            ScheduleAlarmScheduler.cancelAlarm(appContext, session)
+                        }
+                        session.copy(
+                            currentPageReached = newPageReached,
+                            isCompleted = isNowComplete,
+                            completedEpochMillis = if (isNowComplete) now else null,
+                            actualPagesRead = if (isNowComplete) session.totalPages else session.actualPagesRead
+                        )
+                    } else {
+                        session
+                    }
+                } else {
+                    session
+                }
+            }
+
+            if (changed) {
+                persistToDisk(current.copy(sessions = updatedSessions))
+                Log.d(TAG, "Reconciled schedule progress for book '$bookTitle': reached page $pageReached")
+            }
         }
     }
 
