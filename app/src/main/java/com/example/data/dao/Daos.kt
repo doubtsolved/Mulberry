@@ -34,6 +34,7 @@ interface VaultDao {
     suspend fun deleteVaultById(id: Int)
 }
 
+@Deprecated("Legacy agenda task DAO. Replaced by ScheduleRepository")
 @Dao
 interface AgendaTaskDao {
     @Query("SELECT * FROM agenda_tasks ORDER BY isCompleted ASC, orderIndex ASC, id ASC")

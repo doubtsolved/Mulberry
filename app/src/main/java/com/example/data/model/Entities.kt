@@ -66,6 +66,7 @@ data class SnipEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Deprecated("Legacy agenda task entity. Replaced by ScheduleRepository and /sdcard/Mulberry/study_planner.json")
 @Entity(tableName = "agenda_tasks")
 data class AgendaTaskEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,

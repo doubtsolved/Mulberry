@@ -112,7 +112,7 @@ fun ScheduleSessionSheet(
     var selectedBook by remember {
         mutableStateOf(
             if (existingSession != null) {
-                vaultBooks.find { it.title == existingSession.bookTitle || it.fileName == existingSession.bookFileName }
+                vaultBooks.find { (it.slug.isNotBlank() && it.slug == existingSession.bookSlug) || it.title == existingSession.bookTitle || it.fileName == existingSession.bookFileName }
                     ?: vaultBooks.firstOrNull()
             } else {
                 vaultBooks.firstOrNull()

@@ -7,6 +7,7 @@ import androidx.room.Query
 import com.example.data.local.entities.DailyScheduleEntity
 import kotlinx.coroutines.flow.Flow
 
+@Deprecated("Legacy scheduling DAO. Replaced by ScheduleRepository and /sdcard/Mulberry/study_planner.json")
 @Dao
 interface ScheduleDao {
     @Query("SELECT * FROM daily_schedules WHERE targetDateEpochDay = :epochDay ORDER BY id ASC")

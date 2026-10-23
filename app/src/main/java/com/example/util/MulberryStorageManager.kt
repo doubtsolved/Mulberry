@@ -152,6 +152,159 @@ object MulberryStorageManager {
         return File(dir, "$slug.bin")
     }
 
+    const val STUDY_PLANNER_FILE_NAME = "study_planner.json"
+    const val READING_HISTORY_FILE_NAME = "reading_history.json"
+
+    /**
+     * Resolves the primary study planner file at /sdcard/Mulberry/study_planner.json
+     */
+    fun getStudyPlannerJsonFile(context: Context): File {
+        val dir = getMulberryDirectory(context)
+        return File(dir, STUDY_PLANNER_FILE_NAME)
+    }
+
+    /**
+     * Resolves the primary reading history file at /sdcard/Mulberry/reading_history.json
+     */
+    fun getReadingHistoryJsonFile(context: Context): File {
+        val dir = getMulberryDirectory(context)
+        return File(dir, READING_HISTORY_FILE_NAME)
+    }
+
+    /**
+     * Reads and parses /sdcard/Mulberry/reading_history.json with automatic one-time migration.
+     */
+    fun loadReadingHistory(context: Context): com.example.data.schedule.model.ReadingHistoryIndex {
+        val file = getReadingHistoryJsonFile(context)
+        if (file.exists() && file.length() > 0L) {
+            val content = SafeFileWriter.readSafely(file)
+            if (!content.isNullOrBlank()) {
+                val parsed = runCatching {
+                    gson.fromJson(content, com.example.data.schedule.model.ReadingHistoryIndex::class.java)
+                }.getOrNull()
+                if (parsed != null) return parsed
+            }
+        }
+
+        // Automatic one-time migration from /sdcard/Mulberry/.schedule/reading_progress.json
+        val legacyFile = getReadingProgressJsonFile(context)
+        if (legacyFile.exists() && legacyFile.length() > 0L) {
+            try {
+                val legacyContent = SafeFileWriter.readSafely(legacyFile)
+                if (!legacyContent.isNullOrBlank()) {
+                    val legacyIndex = gson.fromJson(legacyContent, ReadingProgressTelemetryIndex::class.java)
+                    if (legacyIndex != null && legacyIndex.books.isNotEmpty()) {
+                        val migratedBooks = legacyIndex.books.map { b ->
+                            com.example.data.schedule.model.BookReadingState(
+                                bookSlug = b.slug.ifEmpty { "book_${b.id}" },
+                                bookTitle = b.title,
+                                subject = b.subject,
+                                lastReadPage = b.lastReadPage,
+                                totalPages = b.totalPages.coerceAtLeast(1),
+                                progressPercent = b.progressPercent,
+                                lastReadEpochMillis = b.lastReadEpochMillis,
+                                totalTimeSeconds = (b.cumulativePagesRead * 120L) // 2 min/page estimate for legacy
+                            )
+                        }
+                        val migratedLogs = legacyIndex.books.flatMap { b ->
+                            b.history.map { h ->
+                                com.example.data.schedule.model.ReadingActivityLog(
+                                    bookSlug = b.slug.ifEmpty { "book_${b.id}" },
+                                    bookTitle = b.title,
+                                    startedAtEpochMillis = h.timestamp - (h.durationMinutes * 60_000L),
+                                    endedAtEpochMillis = h.timestamp,
+                                    durationSeconds = (h.durationMinutes * 60L).coerceAtLeast(h.pagesRead * 120L),
+                                    startPage = h.startPage,
+                                    endPage = h.endPage,
+                                    pagesVisitedCount = h.pagesRead.coerceAtLeast(1)
+                                )
+                            }
+                        }
+                        val migratedHistory = com.example.data.schedule.model.ReadingHistoryIndex(
+                            version = 2,
+                            updatedAt = System.currentTimeMillis(),
+                            books = migratedBooks,
+                            logs = migratedLogs
+                        )
+                        SafeFileWriter.writeAtomically(file, gson.toJson(migratedHistory))
+                        Log.i(TAG, "Successfully migrated legacy reading_progress.json to reading_history.json")
+                        return migratedHistory
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed migrating legacy reading_progress.json", e)
+            }
+        }
+
+        return com.example.data.schedule.model.ReadingHistoryIndex()
+    }
+
+    /**
+     * Persists truthful reading activity recorded in ReaderActivity to /sdcard/Mulberry/reading_history.json
+     * using SafeFileWriter.writeAtomically().
+     */
+    suspend fun recordReadingActivity(
+        context: Context,
+        bookSlug: String,
+        bookTitle: String,
+        subject: String,
+        lastReadPage: Int,
+        totalPages: Int,
+        durationSeconds: Long,
+        startPage: Int,
+        endPage: Int,
+        pagesVisitedCount: Int,
+        sessionId: String? = null
+    ) = withContext(Dispatchers.IO) {
+        if (bookSlug.isBlank()) return@withContext
+        try {
+            val historyFile = getReadingHistoryJsonFile(context)
+            val current = loadReadingHistory(context)
+            val totalSafePages = totalPages.coerceAtLeast(1)
+            val clampedPage = lastReadPage.coerceIn(1, totalSafePages)
+            val percent = ((clampedPage.toFloat() / totalSafePages.toFloat()) * 100f).toInt().coerceIn(0, 100)
+
+            val existingBookState = current.books.find { it.bookSlug == bookSlug }
+            val updatedBookState = com.example.data.schedule.model.BookReadingState(
+                bookSlug = bookSlug,
+                bookTitle = bookTitle.ifEmpty { existingBookState?.bookTitle ?: "" },
+                subject = subject.ifEmpty { existingBookState?.subject ?: "" },
+                lastReadPage = clampedPage,
+                totalPages = totalSafePages,
+                progressPercent = percent,
+                lastReadEpochMillis = System.currentTimeMillis(),
+                totalTimeSeconds = (existingBookState?.totalTimeSeconds ?: 0L) + durationSeconds.coerceAtLeast(0L)
+            )
+
+            val newLog = com.example.data.schedule.model.ReadingActivityLog(
+                sessionId = sessionId,
+                bookSlug = bookSlug,
+                bookTitle = bookTitle,
+                startedAtEpochMillis = System.currentTimeMillis() - (durationSeconds * 1000L),
+                endedAtEpochMillis = System.currentTimeMillis(),
+                durationSeconds = durationSeconds.coerceAtLeast(0L),
+                startPage = startPage.coerceAtLeast(1),
+                endPage = endPage.coerceAtLeast(1),
+                pagesVisitedCount = pagesVisitedCount.coerceAtLeast(1)
+            )
+
+            val updatedBooks = current.books.filter { it.bookSlug != bookSlug } + updatedBookState
+            val updatedLogs = current.logs + newLog
+
+            val updatedIndex = current.copy(
+                version = 2,
+                updatedAt = System.currentTimeMillis(),
+                books = updatedBooks,
+                logs = updatedLogs
+            )
+
+            SafeFileWriter.writeAtomically(historyFile, gson.toJson(updatedIndex))
+            Log.d(TAG, "Recorded reading activity for $bookSlug: visited $pagesVisitedCount pages, $durationSeconds sec")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed recording reading activity", e)
+        }
+    }
+
     /**
      * Resolves the structured schedule directory at /sdcard/Mulberry/.schedule/
      */
@@ -165,7 +318,7 @@ object MulberryStorageManager {
     }
 
     /**
-     * Returns the schedule configuration file at /sdcard/Mulberry/.schedule/schedule.json
+     * Returns the legacy schedule configuration file at /sdcard/Mulberry/.schedule/schedule.json
      */
     fun getScheduleJsonFile(context: Context): File {
         val dir = getScheduleDirectory(context)
@@ -173,7 +326,7 @@ object MulberryStorageManager {
     }
 
     /**
-     * Returns the reading progress tracking file at /sdcard/Mulberry/.schedule/reading_progress.json
+     * Returns the legacy reading progress tracking file at /sdcard/Mulberry/.schedule/reading_progress.json
      */
     fun getReadingProgressJsonFile(context: Context): File {
         val dir = getScheduleDirectory(context)
@@ -181,7 +334,7 @@ object MulberryStorageManager {
     }
 
     /**
-     * Reads and parses /sdcard/Mulberry/.schedule/reading_progress.json
+     * Legacy reading progress loader (falls back to unified history if available)
      */
     fun loadReadingProgress(context: Context): ReadingProgressTelemetryIndex {
         val file = getReadingProgressJsonFile(context)
@@ -202,70 +355,26 @@ object MulberryStorageManager {
     }
 
     /**
-     * Persists an updated reading progress record to /sdcard/Mulberry/.schedule/reading_progress.json
+     * Legacy reading progress recorder. Writes to unified reading_history.json as well.
      */
     suspend fun recordReadingProgress(
         context: Context,
         book: BookEntity,
         newLastReadPage: Int
     ) = withContext(Dispatchers.IO) {
-        try {
-            val file = getReadingProgressJsonFile(context)
-            val current = loadReadingProgress(context)
-            val slug = book.slug.ifEmpty { "book_${book.id}" }
-            val totalPages = book.pageCount.coerceAtLeast(1)
-            val clampedPage = newLastReadPage.coerceIn(0, totalPages)
-            val percent = ((clampedPage.toFloat() / totalPages.toFloat()) * 100f).toInt().coerceIn(0, 100)
-
-            val existingRecord = current.books.find { it.slug == slug || it.id == book.id.toString() }
-            val previousPage = existingRecord?.lastReadPage ?: 0
-            val deltaPages = (clampedPage - previousPage).coerceAtLeast(0)
-
-            val newHistory = if (deltaPages > 0) {
-                (existingRecord?.history ?: emptyList()) + ReadingSessionLog(
-                    timestamp = System.currentTimeMillis(),
-                    startPage = previousPage,
-                    endPage = clampedPage,
-                    pagesRead = deltaPages
-                )
-            } else {
-                existingRecord?.history ?: emptyList()
-            }
-
-            val updatedRecord = BookReadingProgressRecord(
-                id = book.id.toString(),
-                slug = slug,
-                title = book.title,
-                author = book.author,
-                edition = book.edition,
-                prof = book.prof,
-                subject = book.subject,
-                lastReadPage = clampedPage,
-                totalPages = totalPages,
-                progressPercent = percent,
-                lastReadEpochMillis = System.currentTimeMillis(),
-                cumulativePagesRead = (existingRecord?.cumulativePagesRead ?: 0) + deltaPages,
-                isCompleted = clampedPage >= totalPages,
-                history = newHistory
-            )
-
-            val updatedList = current.books.filter { it.slug != slug && it.id != book.id.toString() } + updatedRecord
-            val totalPagesCompleted = updatedList.sumOf { it.lastReadPage }
-
-            val newIndex = current.copy(
-                updatedAt = System.currentTimeMillis(),
-                totalBooksTracked = updatedList.size,
-                totalPagesCompleted = totalPagesCompleted,
-                books = updatedList
-            )
-
-            FileWriter(file, false).use { writer ->
-                gson.toJson(newIndex, writer)
-                writer.flush()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed writing reading_progress.json: ${e.message}", e)
-        }
+        val slug = book.slug.ifEmpty { "book_${book.id}" }
+        recordReadingActivity(
+            context = context,
+            bookSlug = slug,
+            bookTitle = book.title,
+            subject = book.subject,
+            lastReadPage = newLastReadPage,
+            totalPages = book.pageCount,
+            durationSeconds = 0L,
+            startPage = newLastReadPage,
+            endPage = newLastReadPage,
+            pagesVisitedCount = 1
+        )
     }
 
     /**
@@ -301,35 +410,28 @@ object MulberryStorageManager {
     }
 
     /**
-     * Converts DownloadedBookMetadata to BookEntity for unified Compose rendering.
+     * Resolves all downloaded books as BookEntity objects for collection management and shelf binding.
      */
-    fun DownloadedBookMetadata.toBookEntity(): BookEntity {
-        return BookEntity(
-            id = id.hashCode(),
-            title = title,
-            author = author,
-            edition = edition,
-            prof = prof,
-            year = year,
-            subject = subject,
-            type = type,
-            tagsCsv = tags.joinToString(","),
-            pageCount = totalPages,
-            sizeMb = sizeMb,
-            coverUrl = coverUrl,
-            binFilePath = localPath,
-            uriString = localPath,
-            slug = id,
-            isDownloaded = true
-        )
-    }
-
-    /**
-     * Loads downloaded books directly from /sdcard/Mulberry/downloaded_books.json as BookEntity list.
-     */
-    fun loadDownloadedBooksAsEntities(context: Context): List<BookEntity> {
+    fun loadDownloadedBooks(context: Context): List<BookEntity> {
         val index = loadTrackingIndex(context)
-        return index.books.map { it.toBookEntity() }
+        return index.books.map { meta ->
+            BookEntity(
+                id = (meta.id.hashCode() and 0x7FFFFFFF),
+                slug = meta.id,
+                title = meta.title,
+                author = meta.author,
+                edition = meta.edition,
+                prof = meta.prof,
+                year = meta.year,
+                subject = meta.subject,
+                type = meta.type,
+                pageCount = meta.totalPages,
+                sizeMb = meta.sizeMb,
+                coverUrl = meta.coverUrl,
+                binFilePath = meta.localPath,
+                isDownloaded = true
+            )
+        }
     }
 
     /**

@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+@Deprecated("Dead ViewModel. DeskScheduleViewModel + ScheduleRepository is the single scheduling engine")
 class EphemeralMulberryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = MulberryDatabase.getInstance(application)

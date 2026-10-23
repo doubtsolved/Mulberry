@@ -1,6 +1,6 @@
 {
-  "summary":  "Detailed implementation plan for Desk layout refactor, compact Study Planner cards with week limit, My Library downloaded books JSON sync, dynamic subject filters, functional collections with JSON storage, and pager gesture gating.",
-  "updatedAt":  "2026-10-21T06:02:23.259589413Z",
+  "summary":  "Implementation plan for strictly marking scheduled reading sessions completed only upon reaching/passing the target end page, dynamically filling the session card progress bar as reading proceeds, and increasing the Today's Focus and Shelf section heading font size to 20sp bold.",
+  "updatedAt":  "2026-10-22T18:05:01.957779034Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

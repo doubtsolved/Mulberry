@@ -11,7 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.example.R
 import com.example.data.schedule.ScheduleRepository
 import com.example.ui.reader.ReaderActivity
-import com.example.util.ScheduleAlarmScheduler
+import com.example.util.MulberryStorageManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,23 +27,27 @@ class ReadingReminderReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE_SESSION = "com.example.ACTION_SNOOZE_SESSION"
 
         const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
-        const val EXTRA_VAULT_PATH = "EXTRA_VAULT_PATH"
-        const val EXTRA_BOOK_FILE_NAME = "EXTRA_BOOK_FILE_NAME"
+        const val EXTRA_BOOK_SLUG = "EXTRA_BOOK_SLUG"
         const val EXTRA_BOOK_TITLE = "EXTRA_BOOK_TITLE"
         const val EXTRA_START_PAGE = "EXTRA_START_PAGE"
         const val EXTRA_END_PAGE = "EXTRA_END_PAGE"
         const val EXTRA_MICRO_NOTE = "EXTRA_MICRO_NOTE"
         const val EXTRA_SCHEDULED_TIME = "EXTRA_SCHEDULED_TIME"
+
+        // Deprecated constants for backwards compatibility
+        const val EXTRA_VAULT_PATH = "EXTRA_VAULT_PATH"
+        const val EXTRA_BOOK_FILE_NAME = "EXTRA_BOOK_FILE_NAME"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: return
-        val vaultPath = intent.getStringExtra(EXTRA_VAULT_PATH) ?: ""
-        val bookFileName = intent.getStringExtra(EXTRA_BOOK_FILE_NAME) ?: ""
+        val bookSlug = intent.getStringExtra(EXTRA_BOOK_SLUG)
+            ?: intent.getStringExtra(EXTRA_BOOK_FILE_NAME)?.removeSuffix(".bin")?.removeSuffix(".pdf")
+            ?: ""
         val bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE) ?: "Reading Session"
         val startPage = intent.getIntExtra(EXTRA_START_PAGE, 1)
-        val endPage = intent.getIntExtra(EXTRA_END_PAGE, 1)
+        val endPage = intent.getIntExtra(EXTRA_END_PAGE, 20)
         val microNote = intent.getStringExtra(EXTRA_MICRO_NOTE) ?: ""
         val scheduledTime = intent.getLongExtra(EXTRA_SCHEDULED_TIME, System.currentTimeMillis())
 
@@ -52,8 +56,7 @@ class ReadingReminderReceiver : BroadcastReceiver() {
                 showReminderNotification(
                     context = context,
                     sessionId = sessionId,
-                    vaultPath = vaultPath,
-                    bookFileName = bookFileName,
+                    bookSlug = bookSlug,
                     bookTitle = bookTitle,
                     startPage = startPage,
                     endPage = endPage,
@@ -61,18 +64,14 @@ class ReadingReminderReceiver : BroadcastReceiver() {
                 )
             }
             ACTION_SNOOZE_SESSION -> {
-                // Cancel active notification
+                // Cancel active notification immediately
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 notificationManager?.cancel(sessionId.hashCode())
 
-                // Postpone session in repository & reschedule alarm in 30 minutes
+                // Bug Fix 2: Snooze without dropping alarms by calling snoozeSession (sets snoozedUntilEpochMillis)
                 val repo = ScheduleRepository.getInstance(context)
-                if (vaultPath.isNotBlank()) {
-                    repo.setActiveVaultPath(vaultPath)
-                }
                 CoroutineScope(Dispatchers.IO).launch {
-                    val snoozedTime = System.currentTimeMillis() + (30 * 60 * 1000L)
-                    repo.postponeSessionTo(sessionId, snoozedTime)
+                    repo.snoozeSession(sessionId, snoozeMinutes = 30)
                 }
             }
         }
@@ -81,8 +80,7 @@ class ReadingReminderReceiver : BroadcastReceiver() {
     private fun showReminderNotification(
         context: Context,
         sessionId: String,
-        vaultPath: String,
-        bookFileName: String,
+        bookSlug: String,
         bookTitle: String,
         startPage: Int,
         endPage: Int,
@@ -105,19 +103,17 @@ class ReadingReminderReceiver : BroadcastReceiver() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        // Resolve absolute book path
-        val fullBookPath = if (bookFileName.startsWith("/")) {
-            bookFileName
-        } else if (vaultPath.isNotBlank()) {
-            File(vaultPath, bookFileName).absolutePath
-        } else {
-            bookFileName
-        }
+        // Bug Fix 1: Resolve encrypted .bin file path via bookSlug
+        val binFile = if (bookSlug.isNotBlank()) {
+            MulberryStorageManager.getBinFileForBook(context, bookSlug)
+        } else null
+        val fullBookPath = binFile?.takeIf { it.exists() }?.absolutePath ?: ""
 
         // Direct Action 1: Read Now PendingIntent
         val readIntent = Intent(context, ReaderActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(ReaderActivity.EXTRA_BOOK_PATH, fullBookPath)
+            putExtra(ReaderActivity.EXTRA_BOOK_SLUG, bookSlug)
             putExtra(ReaderActivity.EXTRA_BOOK_TITLE, bookTitle)
             putExtra(ReaderActivity.EXTRA_START_PAGE, startPage)
             putExtra(ReaderActivity.EXTRA_SESSION_ID, sessionId)
@@ -133,8 +129,7 @@ class ReadingReminderReceiver : BroadcastReceiver() {
         val snoozeIntent = Intent(context, ReadingReminderReceiver::class.java).apply {
             action = ACTION_SNOOZE_SESSION
             putExtra(EXTRA_SESSION_ID, sessionId)
-            putExtra(EXTRA_VAULT_PATH, vaultPath)
-            putExtra(EXTRA_BOOK_FILE_NAME, bookFileName)
+            putExtra(EXTRA_BOOK_SLUG, bookSlug)
             putExtra(EXTRA_BOOK_TITLE, bookTitle)
             putExtra(EXTRA_START_PAGE, startPage)
             putExtra(EXTRA_END_PAGE, endPage)

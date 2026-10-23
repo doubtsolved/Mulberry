@@ -25,11 +25,13 @@ object ScheduleAlarmScheduler {
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
 
+        // Cancel any existing alarm for this session code first
+        cancelAlarmByCode(context, session.alarmRequestCode)
+
         val intent = Intent(context, ReadingReminderReceiver::class.java).apply {
             action = ReadingReminderReceiver.ACTION_TRIGGER_REMINDER
             putExtra(ReadingReminderReceiver.EXTRA_SESSION_ID, session.id)
-            putExtra(ReadingReminderReceiver.EXTRA_VAULT_PATH, session.vaultPath)
-            putExtra(ReadingReminderReceiver.EXTRA_BOOK_FILE_NAME, session.bookFileName)
+            putExtra(ReadingReminderReceiver.EXTRA_BOOK_SLUG, session.bookSlug)
             putExtra(ReadingReminderReceiver.EXTRA_BOOK_TITLE, session.bookTitle)
             putExtra(ReadingReminderReceiver.EXTRA_START_PAGE, session.startPage)
             putExtra(ReadingReminderReceiver.EXTRA_END_PAGE, session.endPage)
@@ -66,7 +68,7 @@ object ScheduleAlarmScheduler {
                     pendingIntent
                 )
             }
-            Log.d(TAG, "Scheduled alarm for session ${session.id} at $triggerAtMillis")
+            Log.d(TAG, "Scheduled alarm for session ${session.id} (slug: ${session.bookSlug}) at $triggerAtMillis")
         } catch (e: SecurityException) {
             Log.w(TAG, "SecurityException scheduling exact alarm, falling back to setAndAllowWhileIdle", e)
             try {
@@ -105,21 +107,9 @@ object ScheduleAlarmScheduler {
         }
     }
 
-    fun rescheduleAllPendingAlarms(context: Context, sessions: List<*>) {
-        sessions.forEach { raw ->
-            val session = when (raw) {
-                is ReadingSession -> raw
-                is Map<*, *> -> {
-                    try {
-                        val gson = com.google.gson.Gson()
-                        gson.fromJson(gson.toJsonTree(raw), ReadingSession::class.java)
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                else -> null
-            }
-            if (session != null && !session.isCompleted) {
+    fun rescheduleAllPendingAlarms(context: Context, sessions: List<ReadingSession>) {
+        sessions.forEach { session ->
+            if (!session.isCompleted) {
                 scheduleAlarm(context, session)
             }
         }

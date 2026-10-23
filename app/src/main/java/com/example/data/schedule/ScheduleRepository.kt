@@ -1,18 +1,19 @@
 package com.example.data.schedule
 
 import android.content.Context
-import android.os.Build
 import android.util.Log
 import com.example.data.schedule.model.ReadingSession
 import com.example.data.schedule.model.ScheduleVaultFile
-import com.example.data.schedule.model.ScheduleHistoryEntry
-import com.example.data.schedule.model.ScheduleHistoryVault
+import com.example.util.MulberryStorageManager
+import com.example.util.SafeFileWriter
 import com.example.util.ScheduleAlarmScheduler
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,26 +23,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.util.Calendar
-
-import com.google.gson.JsonDeserializationContext
-import com.google.gson.JsonDeserializer
-import com.google.gson.JsonElement
 import java.lang.reflect.Type
+import java.util.Calendar
 import java.util.UUID
 
 class ScheduleRepository private constructor(private val appContext: Context) {
 
     companion object {
         private const val TAG = "ScheduleRepository"
-        private const val SCHEDULE_DIR_NAME = ".schedule"
-        private const val LEGACY_SCHEDULE_DIR_NAME = ".mulberry"
-        private const val SCHEDULE_FILE_NAME = "schedule.json"
-        private const val BACKUP_FILE_NAME = "schedule.json.bak"
-        private const val TMP_FILE_NAME = "schedule.json.tmp"
 
         @Volatile
         private var instance: ScheduleRepository? = null
@@ -63,7 +52,9 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 return ScheduleVaultFile()
             }
             val obj = json.asJsonObject
-            val version = obj.get("version")?.let { if (it.isJsonPrimitive) runCatching { it.asInt }.getOrDefault(1) else 1 } ?: 1
+            val version = obj.get("version")?.let { if (it.isJsonPrimitive) runCatching { it.asInt }.getOrDefault(2) else 2 } ?: 2
+            val updatedAt = obj.get("updatedAt")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrDefault(System.currentTimeMillis()) else System.currentTimeMillis() } ?: System.currentTimeMillis()
+            val weeklyGoalMinutes = obj.get("weeklyGoalMinutes")?.let { if (it.isJsonPrimitive) runCatching { it.asInt }.getOrDefault(420) else 420 } ?: 420
             val weeklyGoalPages = obj.get("weeklyGoalPages")?.let { if (it.isJsonPrimitive) runCatching { it.asInt }.getOrDefault(200) else 200 } ?: 200
 
             val sessionsList = mutableListOf<ReadingSession>()
@@ -77,13 +68,15 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                                 sessionsList.add(session)
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Skipping invalid session item in schedule.json", e)
+                            Log.w(TAG, "Skipping invalid session item in study_planner.json", e)
                         }
                     }
                 }
             }
             return ScheduleVaultFile(
                 version = version,
+                updatedAt = updatedAt,
+                weeklyGoalMinutes = weeklyGoalMinutes,
                 weeklyGoalPages = weeklyGoalPages,
                 sessions = sessionsList
             )
@@ -100,25 +93,35 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 return ReadingSession()
             }
             val obj = json.asJsonObject
-            val start = obj.get("startPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1
-            val current = obj.get("currentPageReached")?.let { runCatching { it.asInt }.getOrDefault(start) } ?: start
+
+            // Handle legacy bookFileName/bookRelativePath mapping to bookSlug
+            val explicitSlug = obj.get("bookSlug")?.let { runCatching { it.asString }.getOrNull() }
+            val fallbackSlug = obj.get("bookFileName")?.let { runCatching { it.asString }.getOrNull() }
+                ?.removeSuffix(".bin")?.removeSuffix(".pdf")
+            val relativeSlug = obj.get("bookRelativePath")?.let { runCatching { it.asString }.getOrNull() }
+                ?.let { File(it).nameWithoutExtension }
+            val finalSlug = explicitSlug?.takeIf { it.isNotBlank() }
+                ?: fallbackSlug?.takeIf { it.isNotBlank() }
+                ?: relativeSlug?.takeIf { it.isNotBlank() }
+                ?: ""
+
             return ReadingSession(
                 id = obj.get("id")?.let { runCatching { it.asString }.getOrNull() } ?: UUID.randomUUID().toString(),
-                vaultPath = obj.get("vaultPath")?.let { runCatching { it.asString }.getOrNull() } ?: "",
-                bookFileName = obj.get("bookFileName")?.let { runCatching { it.asString }.getOrNull() } ?: "",
-                bookRelativePath = obj.get("bookRelativePath")?.let { runCatching { it.asString }.getOrNull() } ?: "",
+                bookSlug = finalSlug,
                 bookTitle = obj.get("bookTitle")?.let { runCatching { it.asString }.getOrNull() } ?: "",
-                startPage = start,
-                endPage = obj.get("endPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1,
-                currentPageReached = current,
+                subject = obj.get("subject")?.let { runCatching { it.asString }.getOrNull() } ?: "",
+                resourceType = obj.get("resourceType")?.let { runCatching { it.asString }.getOrNull() } ?: "BOOK",
+                startPage = obj.get("startPage")?.let { runCatching { it.asInt }.getOrDefault(1) } ?: 1,
+                endPage = obj.get("endPage")?.let { runCatching { it.asInt }.getOrDefault(20) } ?: 20,
+                plannedDurationMinutes = obj.get("plannedDurationMinutes")?.let { runCatching { it.asInt }.getOrDefault(45) } ?: 45,
                 scheduledEpochMillis = obj.get("scheduledEpochMillis")?.let { runCatching { it.asLong }.getOrDefault(0L) } ?: 0L,
                 reminderMinutesBefore = obj.get("reminderMinutesBefore")?.let { runCatching { it.asInt }.getOrDefault(15) } ?: 15,
+                snoozedUntilEpochMillis = obj.get("snoozedUntilEpochMillis")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrNull() else null },
                 microNote = obj.get("microNote")?.let { runCatching { it.asString }.getOrNull() } ?: "",
                 isCompleted = obj.get("isCompleted")?.let { runCatching { it.asBoolean }.getOrDefault(false) } ?: false,
                 completedEpochMillis = obj.get("completedEpochMillis")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrNull() else null },
                 actualPagesRead = obj.get("actualPagesRead")?.let { runCatching { it.asInt }.getOrDefault(0) } ?: 0,
-                isOverdueRollover = obj.get("isOverdueRollover")?.let { runCatching { it.asBoolean }.getOrDefault(false) } ?: false,
-                originalScheduledEpochMillis = obj.get("originalScheduledEpochMillis")?.let { if (it.isJsonPrimitive) runCatching { it.asLong }.getOrNull() else null }
+                actualDurationMinutes = obj.get("actualDurationMinutes")?.let { runCatching { it.asInt }.getOrDefault(0) } ?: 0
             )
         }
     }
@@ -132,7 +135,6 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var loadJob: Job? = null
 
     private var activeVaultPath: String? = null
 
@@ -140,178 +142,99 @@ class ScheduleRepository private constructor(private val appContext: Context) {
     val scheduleState: StateFlow<ScheduleVaultFile> = _scheduleState.asStateFlow()
 
     init {
-        // Auto-discover initial active vault or fallback to /sdcard/Mulberry/
-        val prefs = appContext.getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
-        val savedVaultPath = prefs.getString("active_vault_path", null)
-        val defaultRoot = if (!savedVaultPath.isNullOrBlank()) {
-            savedVaultPath
-        } else {
-            com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
+        scope.launch {
+            loadSchedule()
         }
-        setActiveVaultPath(defaultRoot)
     }
 
     fun setActiveVaultPath(vaultPath: String?) {
-        val effectivePath = if (vaultPath.isNullOrBlank()) {
-            com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
-        } else {
-            vaultPath
-        }
-        if (activeVaultPath == effectivePath) return
-
-        loadJob?.cancel()
-
-        val previousSessions = _scheduleState.value.sessions
-        // Deregister alarms belonging to outgoing vault
-        previousSessions.filter { !it.isCompleted }.forEach {
-            ScheduleAlarmScheduler.cancelAlarm(appContext, it)
-        }
-
         activeVaultPath = vaultPath
-        appContext.getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
-            .edit()
-            .putString("active_vault_path", vaultPath)
-            .apply()
-
-        loadJob = scope.launch {
-            runCatching { loadSchedule() }
+        scope.launch {
+            loadSchedule()
         }
     }
 
-    fun getActiveVaultPath(): String? = activeVaultPath
+    fun getActiveVaultPath(): String = activeVaultPath ?: MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
+
+    /**
+     * Resolves the primary study_planner.json file at /sdcard/Mulberry/study_planner.json
+     * with automatic migration from legacy .schedule/schedule.json or .mulberry/schedule.json.
+     */
+    private fun getStudyPlannerFile(): File {
+        val customRoot = activeVaultPath
+        val baseDir = if (!customRoot.isNullOrBlank() && File(customRoot).exists()) {
+            File(customRoot)
+        } else {
+            MulberryStorageManager.getMulberryDirectory(appContext)
+        }
+        val plannerFile = File(baseDir, MulberryStorageManager.STUDY_PLANNER_FILE_NAME)
+        if (!plannerFile.exists()) {
+            // Check legacy paths for automatic migration
+            val legacyScheduleDir = File(baseDir, ".schedule/schedule.json")
+            val legacyMulberryDir = File(baseDir, ".mulberry/schedule.json")
+            val sourceFile = when {
+                legacyScheduleDir.exists() -> legacyScheduleDir
+                legacyMulberryDir.exists() -> legacyMulberryDir
+                else -> null
+            }
+            if (sourceFile != null && sourceFile.length() > 0L) {
+                try {
+                    val rawJson = sourceFile.readText()
+                    if (rawJson.isNotBlank()) {
+                        val parsed = gson.fromJson(rawJson, ScheduleVaultFile::class.java)
+                        if (parsed != null) {
+                            SafeFileWriter.writeAtomically(plannerFile, gson.toJson(parsed.copy(version = 2)))
+                            Log.i(TAG, "Migrated legacy schedule from ${sourceFile.absolutePath} to ${plannerFile.absolutePath}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed migrating legacy schedule file", e)
+                }
+            }
+        }
+        return plannerFile
+    }
 
     suspend fun loadSchedule(): ScheduleVaultFile = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val root = activeVaultPath
-            if (root.isNullOrBlank()) {
-                val empty = ScheduleVaultFile()
-                _scheduleState.value = empty
-                return@withLock empty
-            }
-
-            val scheduleFile = getScheduleFile(root)
-            val backupFile = getBackupFile(root)
-
+            val plannerFile = getStudyPlannerFile()
             var parsed: ScheduleVaultFile? = null
 
-            if (scheduleFile.exists()) {
+            if (plannerFile.exists() && plannerFile.length() > 0L) {
                 try {
-                    val json = scheduleFile.readText()
-                    if (json.isNotBlank()) {
-                        parsed = gson.fromJson(json, ScheduleVaultFile::class.java)
+                    val content = SafeFileWriter.readSafely(plannerFile)
+                    if (!content.isNullOrBlank()) {
+                        parsed = gson.fromJson(content, ScheduleVaultFile::class.java)
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Corrupted schedule.json detected, isolating file and falling back", e)
-                    // 1. Rename damaged file to isolate it
+                    Log.w(TAG, "Corrupted study_planner.json detected, quarantining file and recovering", e)
                     try {
                         val corruptFile = File(
-                            scheduleFile.parentFile,
-                            "schedule.json.corrupted_${System.currentTimeMillis()}"
+                            plannerFile.parentFile,
+                            "study_planner.json.corrupted_${System.currentTimeMillis()}"
                         )
-                        scheduleFile.renameTo(corruptFile)
+                        plannerFile.renameTo(corruptFile)
                     } catch (renEx: Exception) {
-                        Log.e(TAG, "Failed renaming corrupted schedule file", renEx)
+                        Log.e(TAG, "Failed renaming corrupted study_planner file", renEx)
                     }
-                }
-            }
-
-            // Fallback to backup if primary failed or was corrupted
-            if (parsed == null && backupFile.exists()) {
-                try {
-                    val json = backupFile.readText()
-                    if (json.isNotBlank()) {
-                        parsed = gson.fromJson(json, ScheduleVaultFile::class.java)
-                        Log.i(TAG, "Successfully restored schedule from .bak file")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to restore from .bak file", e)
-                }
-            }
-
-            var hadRawMaps = false
-            val cleanSessions = mutableListOf<ReadingSession>()
-            val rawList = (parsed?.sessions as? List<*>) ?: emptyList<Any>()
-            for (item in rawList) {
-                when (item) {
-                    is ReadingSession -> cleanSessions.add(item)
-                    is Map<*, *> -> {
-                        hadRawMaps = true
-                        try {
-                            val jsonTree = gson.toJsonTree(item)
-                            val s = gson.fromJson(jsonTree, ReadingSession::class.java)
-                            if (s != null) cleanSessions.add(s)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed recovering session from map", e)
-                        }
-                    }
-                    else -> {
-                        Log.w(TAG, "Skipping unrecognized session type: ${item?.javaClass?.name}")
-                    }
-                }
-            }
-
-            val cal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val startOfToday = cal.timeInMillis
-
-            var hadRollovers = false
-            val processedSessions = cleanSessions.map { session ->
-                if (!session.isCompleted && session.scheduledEpochMillis > 0L && session.scheduledEpochMillis < startOfToday) {
-                    hadRollovers = true
-                    val sessionCal = Calendar.getInstance().apply { timeInMillis = session.scheduledEpochMillis }
-                    val targetCal = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, sessionCal.get(Calendar.HOUR_OF_DAY))
-                        set(Calendar.MINUTE, sessionCal.get(Calendar.MINUTE))
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    val rolledTime = targetCal.timeInMillis
-                    val rolled = session.copy(
-                        scheduledEpochMillis = rolledTime,
-                        isOverdueRollover = true,
-                        originalScheduledEpochMillis = session.originalScheduledEpochMillis ?: session.scheduledEpochMillis
-                    )
-                    scope.launch(Dispatchers.IO) {
-                        recordHistoryEntry(
-                            ScheduleHistoryEntry(
-                                sessionId = rolled.id,
-                                bookTitle = rolled.bookTitle,
-                                bookFileName = rolled.bookFileName,
-                                startPage = rolled.startPage,
-                                endPage = rolled.endPage,
-                                pagesRead = (rolled.currentPageReached - rolled.startPage).coerceAtLeast(0),
-                                scheduledEpochMillis = rolledTime,
-                                completedEpochMillis = null,
-                                isCompleted = false,
-                                wasRolledOver = true,
-                                action = "ROLLED_OVER",
-                                note = "Overdue schedule auto-shifted to today"
-                            )
-                        )
-                    }
-                    rolled
-                } else {
-                    session
                 }
             }
 
             val finalState = ScheduleVaultFile(
-                version = parsed?.version ?: 1,
+                version = 2,
+                updatedAt = parsed?.updatedAt ?: System.currentTimeMillis(),
+                weeklyGoalMinutes = parsed?.weeklyGoalMinutes ?: 420,
                 weeklyGoalPages = parsed?.weeklyGoalPages ?: 200,
-                sessions = processedSessions
+                sessions = parsed?.sessions ?: emptyList()
             )
+
             _scheduleState.value = finalState
 
-            // If we recovered with an empty file due to corruption or absence, or cleaned legacy maps, or rolled over overdue sessions, save clean file to disk
-            if ((parsed == null && !scheduleFile.exists()) || hadRawMaps || hadRollovers) {
+            if (parsed == null && !plannerFile.exists()) {
                 runCatching { persistToDisk(finalState) }
             }
 
-            // Re-arm uncompleted future alarms for this vault
+            // Re-arm uncompleted future alarms
             ScheduleAlarmScheduler.rescheduleAllPendingAlarms(appContext, finalState.sessions)
 
             finalState
@@ -319,72 +242,19 @@ class ScheduleRepository private constructor(private val appContext: Context) {
     }
 
     private suspend fun persistToDisk(data: ScheduleVaultFile) = withContext(Dispatchers.IO) {
-        val root = activeVaultPath ?: return@withContext
-        val scheduleFile = getScheduleFile(root)
-        val backupFile = getBackupFile(root)
-        val tmpFile = getTmpFile(root)
-
         try {
-            // Ensure parent directory (.mulberry) exists
-            val dir = scheduleFile.parentFile
-            if (dir != null && !dir.exists()) {
-                dir.mkdirs()
+            val plannerFile = getStudyPlannerFile()
+            val updated = data.copy(updatedAt = System.currentTimeMillis())
+            val json = gson.toJson(updated)
+            val success = SafeFileWriter.writeAtomically(plannerFile, json)
+            if (success) {
+                _scheduleState.value = updated
+                Log.d(TAG, "Atomically saved ${updated.sessions.size} study sessions to ${plannerFile.absolutePath}")
+            } else {
+                Log.e(TAG, "SafeFileWriter failed writing study_planner.json to ${plannerFile.absolutePath}")
             }
-
-            val json = gson.toJson(data)
-
-            // 1. Write to temporary file with file descriptor sync
-            FileOutputStream(tmpFile).use { fos ->
-                fos.write(json.toByteArray(Charsets.UTF_8))
-                fos.flush()
-                fos.fd.sync()
-            }
-
-            // 2. Rotate current file to .bak if it exists
-            if (scheduleFile.exists()) {
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Files.copy(
-                            scheduleFile.toPath(),
-                            backupFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
-                        )
-                    } else {
-                        scheduleFile.copyTo(backupFile, overwrite = true)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed creating .bak backup copy", e)
-                }
-            }
-
-            // 3. Atomically move tmp to primary schedule.json
-            var moved = false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                try {
-                    Files.move(
-                        tmpFile.toPath(),
-                        scheduleFile.toPath(),
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                    )
-                    moved = true
-                } catch (e: Exception) {
-                    Log.w(TAG, "Atomic move failed, falling back to replace copy", e)
-                }
-            }
-
-            if (!moved) {
-                if (scheduleFile.exists()) scheduleFile.delete()
-                if (!tmpFile.renameTo(scheduleFile)) {
-                    tmpFile.copyTo(scheduleFile, overwrite = true)
-                    tmpFile.delete()
-                }
-            }
-
-            _scheduleState.value = data
-            Log.d(TAG, "Saved ${data.sessions.size} reading sessions to ${scheduleFile.absolutePath}")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed writing schedule to disk", e)
+            Log.e(TAG, "Failed writing study planner to disk", e)
         }
     }
 
@@ -395,19 +265,6 @@ class ScheduleRepository private constructor(private val appContext: Context) {
             val updatedFile = current.copy(sessions = updatedSessions)
             persistToDisk(updatedFile)
             ScheduleAlarmScheduler.scheduleAlarm(appContext, session)
-            recordHistoryEntry(
-                ScheduleHistoryEntry(
-                    sessionId = session.id,
-                    bookTitle = session.bookTitle,
-                    bookFileName = session.bookFileName,
-                    startPage = session.startPage,
-                    endPage = session.endPage,
-                    scheduledEpochMillis = session.scheduledEpochMillis,
-                    isCompleted = false,
-                    action = "CREATED",
-                    note = session.microNote
-                )
-            )
         }
     }
 
@@ -425,32 +282,18 @@ class ScheduleRepository private constructor(private val appContext: Context) {
             if (!session.isCompleted) {
                 ScheduleAlarmScheduler.scheduleAlarm(appContext, session)
             }
-            recordHistoryEntry(
-                ScheduleHistoryEntry(
-                    sessionId = session.id,
-                    bookTitle = session.bookTitle,
-                    bookFileName = session.bookFileName,
-                    startPage = session.startPage,
-                    endPage = session.endPage,
-                    scheduledEpochMillis = session.scheduledEpochMillis,
-                    isCompleted = session.isCompleted,
-                    action = "EDITED",
-                    note = session.microNote
-                )
-            )
         }
     }
 
-    suspend fun markCompleted(sessionId: String, actualReadPages: Int = 0): Unit = withContext(Dispatchers.IO) {
+    suspend fun snoozeSession(sessionId: String, snoozeMinutes: Int = 30): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
             val current = _scheduleState.value
             val target = current.sessions.find { it.id == sessionId } ?: return@withLock
-            val now = System.currentTimeMillis()
+            val snoozeTimestamp = System.currentTimeMillis() + (snoozeMinutes * 60_000L)
 
             val updatedSession = target.copy(
-                isCompleted = true,
-                completedEpochMillis = now,
-                actualPagesRead = if (actualReadPages > 0) actualReadPages else target.totalPages
+                snoozedUntilEpochMillis = snoozeTimestamp,
+                isCompleted = false
             )
 
             val updatedSessions = current.sessions.map {
@@ -459,87 +302,50 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
             ScheduleAlarmScheduler.cancelAlarm(appContext, target)
             persistToDisk(current.copy(sessions = updatedSessions))
-            recordHistoryEntry(
-                ScheduleHistoryEntry(
-                    sessionId = target.id,
-                    bookTitle = target.bookTitle,
-                    bookFileName = target.bookFileName,
-                    startPage = target.startPage,
-                    endPage = target.endPage,
-                    pagesRead = updatedSession.actualPagesRead,
-                    scheduledEpochMillis = target.scheduledEpochMillis,
-                    completedEpochMillis = now,
-                    isCompleted = true,
-                    action = "COMPLETED",
-                    note = target.microNote
-                )
-            )
+            ScheduleAlarmScheduler.scheduleAlarm(appContext, updatedSession)
+            Log.d(TAG, "Snoozed session $sessionId for $snoozeMinutes min until $snoozeTimestamp")
         }
     }
 
-    suspend fun updateSessionProgress(sessionId: String, pageReached: Int): Unit = withContext(Dispatchers.IO) {
+    suspend fun markCompleted(sessionId: String, actualReadPages: Int = 0, actualDurationMinutes: Int = 0): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
             val current = _scheduleState.value
             val target = current.sessions.find { it.id == sessionId } ?: return@withLock
-            val newPageReached = maxOf(target.currentPageReached, pageReached)
-            val isNowComplete = newPageReached >= target.endPage
             val now = System.currentTimeMillis()
 
             val updatedSession = target.copy(
-                currentPageReached = newPageReached,
-                isCompleted = isNowComplete,
-                completedEpochMillis = if (isNowComplete) now else target.completedEpochMillis,
-                actualPagesRead = if (isNowComplete) target.totalPages else target.actualPagesRead
+                isCompleted = true,
+                completedEpochMillis = now,
+                snoozedUntilEpochMillis = null,
+                actualPagesRead = if (actualReadPages > 0) actualReadPages else target.totalPages,
+                actualDurationMinutes = if (actualDurationMinutes > 0) actualDurationMinutes else target.plannedDurationMinutes
             )
 
             val updatedSessions = current.sessions.map {
                 if (it.id == sessionId) updatedSession else it
             }
 
-            if (isNowComplete) {
-                ScheduleAlarmScheduler.cancelAlarm(appContext, target)
-            }
+            ScheduleAlarmScheduler.cancelAlarm(appContext, target)
             persistToDisk(current.copy(sessions = updatedSessions))
-            Log.d(TAG, "Updated progress for session $sessionId: page $newPageReached (completed=$isNowComplete)")
+            Log.d(TAG, "Marked session $sessionId completed: read $actualReadPages pages in $actualDurationMinutes min")
         }
     }
 
-    suspend fun reconcileReadingProgress(bookTitle: String, pageReached: Int): Unit = withContext(Dispatchers.IO) {
+    suspend fun updateIncrementalSessionProgress(sessionId: String, actualReadPages: Int, actualDurationMinutes: Int): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
             val current = _scheduleState.value
-            var changed = false
-            val now = System.currentTimeMillis()
+            val target = current.sessions.find { it.id == sessionId } ?: return@withLock
+            if (target.isCompleted) return@withLock
 
-            val updatedSessions = current.sessions.map { session ->
-                val matchesBook = session.bookTitle.equals(bookTitle, ignoreCase = true) ||
-                        (session.bookFileName.isNotBlank() && bookTitle.contains(session.bookFileName.removeSuffix(".pdf"), ignoreCase = true))
+            val updatedSession = target.copy(
+                actualPagesRead = maxOf(target.actualPagesRead, actualReadPages),
+                actualDurationMinutes = maxOf(target.actualDurationMinutes, actualDurationMinutes)
+            )
 
-                if (matchesBook && !session.isCompleted) {
-                    val newPageReached = maxOf(session.currentPageReached, pageReached)
-                    val isNowComplete = newPageReached >= session.endPage
-                    if (newPageReached != session.currentPageReached || isNowComplete) {
-                        changed = true
-                        if (isNowComplete) {
-                            ScheduleAlarmScheduler.cancelAlarm(appContext, session)
-                        }
-                        session.copy(
-                            currentPageReached = newPageReached,
-                            isCompleted = isNowComplete,
-                            completedEpochMillis = if (isNowComplete) now else null,
-                            actualPagesRead = if (isNowComplete) session.totalPages else session.actualPagesRead
-                        )
-                    } else {
-                        session
-                    }
-                } else {
-                    session
-                }
+            val updatedSessions = current.sessions.map {
+                if (it.id == sessionId) updatedSession else it
             }
-
-            if (changed) {
-                persistToDisk(current.copy(sessions = updatedSessions))
-                Log.d(TAG, "Reconciled schedule progress for book '$bookTitle': reached page $pageReached")
-            }
+            persistToDisk(current.copy(sessions = updatedSessions))
         }
     }
 
@@ -554,13 +360,17 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 target.copy(
                     isCompleted = true,
                     completedEpochMillis = now,
-                    actualPagesRead = target.totalPages
+                    snoozedUntilEpochMillis = null,
+                    actualPagesRead = target.totalPages,
+                    actualDurationMinutes = target.plannedDurationMinutes
                 )
             } else {
                 target.copy(
                     isCompleted = false,
                     completedEpochMillis = null,
-                    actualPagesRead = 0
+                    snoozedUntilEpochMillis = null,
+                    actualPagesRead = 0,
+                    actualDurationMinutes = 0
                 )
             }
 
@@ -587,6 +397,7 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
             val updatedSession = target.copy(
                 scheduledEpochMillis = newScheduledTime,
+                snoozedUntilEpochMillis = null,
                 isCompleted = false,
                 completedEpochMillis = null
             )
@@ -608,6 +419,7 @@ class ScheduleRepository private constructor(private val appContext: Context) {
 
             val updatedSession = target.copy(
                 scheduledEpochMillis = newEpochMillis,
+                snoozedUntilEpochMillis = null,
                 isCompleted = false
             )
 
@@ -625,14 +437,14 @@ class ScheduleRepository private constructor(private val appContext: Context) {
         mutex.withLock {
             val current = _scheduleState.value
             val target = current.sessions.find { it.id == sessionId } ?: return@withLock
-            if (target.bookRelativePath == newRelativePath) return@withLock
+            val slug = File(newRelativePath).nameWithoutExtension
+            if (target.bookSlug == slug) return@withLock
 
-            val updatedSession = target.copy(bookRelativePath = newRelativePath)
+            val updatedSession = target.copy(bookSlug = slug)
             val updatedSessions = current.sessions.map {
                 if (it.id == sessionId) updatedSession else it
             }
             persistToDisk(current.copy(sessions = updatedSessions))
-            Log.d(TAG, "Updated bookRelativePath for session $sessionId to $newRelativePath")
         }
     }
 
@@ -640,6 +452,14 @@ class ScheduleRepository private constructor(private val appContext: Context) {
         mutex.withLock {
             val current = _scheduleState.value
             val updated = current.copy(weeklyGoalPages = weeklyGoalPages.coerceAtLeast(10))
+            persistToDisk(updated)
+        }
+    }
+
+    suspend fun updateWeeklyGoalMinutes(weeklyGoalMinutes: Int): Unit = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val current = _scheduleState.value
+            val updated = current.copy(weeklyGoalMinutes = weeklyGoalMinutes.coerceAtLeast(30))
             persistToDisk(updated)
         }
     }
@@ -678,83 +498,31 @@ class ScheduleRepository private constructor(private val appContext: Context) {
         return Pair(startOfWeek, endOfWeek)
     }
 
-    fun getWeeklyCompletedPages(sessions: List<*> = _scheduleState.value.sessions): Int {
+    fun getWeeklyCompletedPages(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {
         val (startOfWeek, endOfWeek) = getWeekBounds()
-        return sessions.filterIsInstance<ReadingSession>()
+        return sessions
             .filter { it.isCompleted && (it.completedEpochMillis ?: it.scheduledEpochMillis) in startOfWeek..endOfWeek }
             .sumOf { if (it.actualPagesRead > 0) it.actualPagesRead else it.totalPages }
     }
 
-    fun getWeeklyPlannedPages(sessions: List<*> = _scheduleState.value.sessions): Int {
+    fun getWeeklyPlannedPages(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {
         val (startOfWeek, endOfWeek) = getWeekBounds()
-        return sessions.filterIsInstance<ReadingSession>()
+        return sessions
             .filter { it.scheduledEpochMillis in startOfWeek..endOfWeek }
             .sumOf { it.totalPages }
     }
 
-    private fun getScheduleFile(root: String): File {
-        val dir = File(root, SCHEDULE_DIR_NAME)
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, SCHEDULE_FILE_NAME)
-        if (!file.exists()) {
-            val legacy = File(File(root, LEGACY_SCHEDULE_DIR_NAME), SCHEDULE_FILE_NAME)
-            if (legacy.exists()) {
-                runCatching { legacy.copyTo(file, overwrite = true) }
-            }
-        }
-        return file
+    fun getWeeklyCompletedMinutes(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {
+        val (startOfWeek, endOfWeek) = getWeekBounds()
+        return sessions
+            .filter { it.isCompleted && (it.completedEpochMillis ?: it.scheduledEpochMillis) in startOfWeek..endOfWeek }
+            .sumOf { if (it.actualDurationMinutes > 0) it.actualDurationMinutes else it.plannedDurationMinutes }
     }
 
-    private fun getBackupFile(root: String): File {
-        val dir = File(root, SCHEDULE_DIR_NAME)
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, BACKUP_FILE_NAME)
-    }
-
-    private fun getTmpFile(root: String): File {
-        val dir = File(root, SCHEDULE_DIR_NAME)
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, TMP_FILE_NAME)
-    }
-
-    private fun getScheduleHistoryFile(root: String): File {
-        val dir = File(root, SCHEDULE_DIR_NAME)
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, "schedule_history.json")
-    }
-
-    suspend fun loadScheduleHistory(): List<ScheduleHistoryEntry> = withContext(Dispatchers.IO) {
-        val root = activeVaultPath ?: com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
-        val file = getScheduleHistoryFile(root)
-        if (!file.exists() || file.length() == 0L) return@withContext emptyList()
-        try {
-            val json = file.readText()
-            val vault = gson.fromJson(json, ScheduleHistoryVault::class.java)
-            vault?.history ?: emptyList()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed reading schedule_history.json", e)
-            emptyList()
-        }
-    }
-
-    suspend fun recordHistoryEntry(entry: ScheduleHistoryEntry) = withContext(Dispatchers.IO) {
-        val root = activeVaultPath ?: com.example.util.MulberryStorageManager.getMulberryDirectory(appContext).absolutePath
-        val file = getScheduleHistoryFile(root)
-        try {
-            val existing = if (file.exists() && file.length() > 0L) {
-                runCatching {
-                    gson.fromJson(file.readText(), ScheduleHistoryVault::class.java)?.history ?: emptyList()
-                }.getOrDefault(emptyList())
-            } else emptyList()
-
-            val updated = listOf(entry) + existing.take(500)
-            val vault = ScheduleHistoryVault(
-                updatedAt = System.currentTimeMillis(),
-                history = updated
-            )
-            file.writeText(gson.toJson(vault))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed writing schedule_history.json", e)
-        }
+    fun getWeeklyPlannedMinutes(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {
+        val (startOfWeek, endOfWeek) = getWeekBounds()
+        return sessions
+            .filter { it.scheduledEpochMillis in startOfWeek..endOfWeek }
+            .sumOf { it.plannedDurationMinutes }
     }
 }

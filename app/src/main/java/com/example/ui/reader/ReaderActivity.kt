@@ -21,25 +21,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,10 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -105,7 +89,9 @@ class ReaderActivity : AppCompatActivity() {
         const val EXTRA_BOOK_TITLE = "BOOK_TITLE"
         const val EXTRA_BOOK_ID = "BOOK_ID"
         const val EXTRA_START_PAGE = "EXTRA_START_PAGE"
+        const val EXTRA_END_PAGE = "EXTRA_END_PAGE"
         const val EXTRA_SESSION_ID = "EXTRA_SESSION_ID"
+        const val EXTRA_BOOK_SLUG = "EXTRA_BOOK_SLUG"
 
         fun launch(context: Context, bookPath: String, bookTitle: String, bookId: Int = -1) {
             val intent = Intent(context, ReaderActivity::class.java).apply {
@@ -126,12 +112,22 @@ class ReaderActivity : AppCompatActivity() {
             }
         }
 
-        fun launchSession(context: Context, bookPath: String, bookTitle: String, startPage: Int, sessionId: String) {
+        fun launchSession(
+            context: Context,
+            bookPath: String,
+            bookTitle: String,
+            startPage: Int,
+            sessionId: String,
+            bookSlug: String = "",
+            endPage: Int = -1
+        ) {
             val intent = Intent(context, ReaderActivity::class.java).apply {
                 putExtra(EXTRA_BOOK_PATH, bookPath)
                 putExtra(EXTRA_BOOK_TITLE, bookTitle)
                 putExtra(EXTRA_START_PAGE, startPage)
                 putExtra(EXTRA_SESSION_ID, sessionId)
+                if (bookSlug.isNotBlank()) putExtra(EXTRA_BOOK_SLUG, bookSlug)
+                if (endPage > 0) putExtra(EXTRA_END_PAGE, endPage)
             }
             if (context is Activity) {
                 val options = ActivityOptionsCompat.makeCustomAnimation(
@@ -150,10 +146,15 @@ class ReaderActivity : AppCompatActivity() {
     private var bookPath: String = ""
     private var bookTitle: String = ""
     private var bookId: Int = -1
+    private var bookSlug: String = ""
     private var sessionId: String? = null
     private var sessionStartPage: Int = -1
+    private var sessionEndPage: Int = -1
     private var maxPageReached: Int = 1
     private var sessionStartTimeMs: Long = 0L
+    private var resumeTimestamp: Long = 0L
+    private var accumulatedActiveSeconds: Long = 0L
+    private val visitedPages = mutableSetOf<Int>()
     private var initialOpenedPage: Int = 1
     private var hasLoggedSessionCompleted: Boolean = false
 
@@ -177,47 +178,6 @@ class ReaderActivity : AppCompatActivity() {
     private var activeTheme: ThemeMode = ThemeMode.LIGHT
     private var ephemeralPdfFile: File? = null
     private var activeRenderingPath: String = ""
-
-    private val showScheduleCelebration = mutableStateOf(false)
-    private val completedScheduleSession = mutableStateOf<com.example.data.schedule.model.ReadingSession?>(null)
-    private val celebratedSessionIds = mutableSetOf<String>()
-
-    private fun checkScheduleProgressAndCelebrate(newPage: Int) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val scheduleRepo = com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
-                val currentSessionId = sessionId
-                val effectiveTitle = bookTitle
-
-                // 1. Live schedule sync
-                if (!currentSessionId.isNullOrBlank()) {
-                    scheduleRepo.updateSessionProgress(currentSessionId, newPage)
-                }
-                if (effectiveTitle.isNotBlank()) {
-                    scheduleRepo.reconcileReadingProgress(effectiveTitle, newPage)
-                }
-
-                // 2. Cheering celebration check if end page reached
-                val sessions = scheduleRepo.scheduleState.value.sessions
-                val matched = sessions.firstOrNull { s ->
-                    val isMatch = (currentSessionId != null && s.id == currentSessionId) ||
-                            s.bookTitle.equals(effectiveTitle, ignoreCase = true) ||
-                            (s.bookFileName.isNotBlank() && effectiveTitle.contains(s.bookFileName.removeSuffix(".pdf"), ignoreCase = true))
-                    isMatch && !celebratedSessionIds.contains(s.id) && newPage >= s.endPage
-                }
-
-                if (matched != null) {
-                    celebratedSessionIds.add(matched.id)
-                    withContext(Dispatchers.Main) {
-                        completedScheduleSession.value = matched
-                        showScheduleCelebration.value = true
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
 
     private var thumbnailManager: PdfThumbnailManager? = null
     private var searchManager: PdfTextSearchManager? = null
@@ -247,14 +207,17 @@ class ReaderActivity : AppCompatActivity() {
         bookPath = intent.getStringExtra(EXTRA_BOOK_PATH) ?: ""
         bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE) ?: ""
         bookId = intent.getIntExtra(EXTRA_BOOK_ID, -1)
+        bookSlug = intent.getStringExtra(EXTRA_BOOK_SLUG) ?: ""
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID)
         sessionStartPage = intent.getIntExtra(EXTRA_START_PAGE, -1)
+        sessionEndPage = intent.getIntExtra(EXTRA_END_PAGE, -1)
 
         if (sessionStartPage > 0) {
             val startIdx = (sessionStartPage - 1).coerceAtLeast(0)
             currentSinglePage.intValue = startIdx
             singlePageTargetJump.intValue = startIdx
             maxPageReached = sessionStartPage
+            visitedPages.add(sessionStartPage)
         }
 
         // Hook system back gesture
@@ -272,6 +235,11 @@ class ReaderActivity : AppCompatActivity() {
         startAsyncPreparation()
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumeTimestamp = System.currentTimeMillis()
+    }
+
     private fun startAsyncPreparation() {
         prepareJob?.cancel()
         readerLoadState.value = ReaderLoadState.Loading
@@ -279,6 +247,14 @@ class ReaderActivity : AppCompatActivity() {
         prepareJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 var resolvedPath = bookPath.trim()
+
+                // 0. Primary resolution via bookSlug in /sdcard/Mulberry/<slug>.bin
+                if (bookSlug.isNotBlank()) {
+                    val directBin = com.example.util.MulberryStorageManager.getBinFileForBook(applicationContext, bookSlug)
+                    if (directBin.exists()) {
+                        resolvedPath = directBin.absolutePath
+                    }
+                }
 
                 // 1. Resolve path from Mulberry storage (/sdcard/Mulberry/), tracking JSON, or Room DB
                 val mulberryDir = com.example.util.MulberryStorageManager.getMulberryDirectory(applicationContext)
@@ -676,36 +652,26 @@ class ReaderActivity : AppCompatActivity() {
                         val docFile = if (!targetPath.startsWith("content://")) File(targetPath).takeIf { it.exists() } else null
                         val docUri = if (targetPath.startsWith("content://")) Uri.parse(targetPath) else null
 
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            SinglePagePdfViewer(
-                                pdfFile = docFile,
-                                pdfUri = docUri,
-                                initialPage = currentSinglePage.intValue,
-                                totalPages = totalPagesState.intValue,
-                                targetPageJump = singlePageTargetJump.intValue,
-                                searchMatches = searchMatchesState.value,
-                                activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
-                                onPageChanged = { pageIndex ->
-                                    currentSinglePage.intValue = pageIndex
-                                    val newPage = pageIndex + 1
-                                    maxPageReached = maxOf(maxPageReached, newPage)
-                                    checkScheduleProgressAndCelebrate(newPage)
-                                },
-                                themeMode = activeTheme,
-                                onToggleControls = { visible ->
-                                    toggleReaderControls(visible)
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-
-                            if (showScheduleCelebration.value && completedScheduleSession.value != null) {
-                                ScheduleCelebrationOverlay(
-                                    session = completedScheduleSession.value!!,
-                                    onContinueReading = { showScheduleCelebration.value = false },
-                                    onDismiss = { showScheduleCelebration.value = false }
-                                )
-                            }
-                        }
+                        SinglePagePdfViewer(
+                            pdfFile = docFile,
+                            pdfUri = docUri,
+                            initialPage = currentSinglePage.intValue,
+                            totalPages = totalPagesState.intValue,
+                            targetPageJump = singlePageTargetJump.intValue,
+                            searchMatches = searchMatchesState.value,
+                            activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
+                            onPageChanged = { pageIndex ->
+                                currentSinglePage.intValue = pageIndex
+                                val pageNum = pageIndex + 1
+                                visitedPages.add(pageNum)
+                                maxPageReached = maxOf(maxPageReached, pageNum)
+                            },
+                            themeMode = activeTheme,
+                            onToggleControls = { visible ->
+                                toggleReaderControls(visible)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             }
@@ -915,81 +881,68 @@ class ReaderActivity : AppCompatActivity() {
                     )
                 }
 
-                // Persist updated metadata to .mulberry folder
-                try {
-                    val book = if (bookId != -1) bookDao.getBookById(bookId) else bookDao.getAllBooksSync().find { it.uriString == bookPath }
-                    if (book != null) {
-                        val vault = db.vaultDao().getAllVaultsSync().find { it.id == book.vaultId }
-                        val vaultRoot = vault?.pathDisplay?.ifEmpty { vault.uriString }
-                            ?: java.io.File(bookPath).parentFile?.parentFile?.absolutePath
-                            ?: java.io.File(bookPath).parentFile?.absolutePath
-                        if (!vaultRoot.isNullOrBlank()) {
-                            VaultMetadataManager.persistVaultMetadata(
-                                vaultRootPath = vaultRoot,
-                                vaultId = book.vaultId.toString(),
-                                context = applicationContext
-                            )
-                        }
-                        // Also record telemetry to /sdcard/Mulberry/.schedule/reading_progress.json
-                        runCatching {
-                            com.example.util.MulberryStorageManager.recordReadingProgress(
-                                context = applicationContext,
-                                book = book,
-                                newLastReadPage = currentPage
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                val effectiveSlug = bookSlug.ifEmpty {
+                    val b = if (bookId != -1) bookDao.getBookById(bookId) else bookDao.getAllBooksSync().find { it.uriString == bookPath || it.binFilePath == bookPath }
+                    b?.slug ?: ""
                 }
 
-                val book = if (bookId != -1) bookDao.getBookById(bookId) else bookDao.getAllBooksSync().find { it.uriString == bookPath }
-                val bookSubject = book?.subject?.takeIf { it.isNotBlank() && !it.equals("General", ignoreCase = true) } ?: "Medical Core"
-                val sessionDurationMins = if (sessionStartTimeMs > 0L) {
-                    ((System.currentTimeMillis() - sessionStartTimeMs) / 60000L).toInt().coerceAtLeast(1)
-                } else 1
-                val sessionPagesRead = (maxPageReached - initialOpenedPage + 1).coerceAtLeast(1)
-                val effectiveTitle = bookTitle.ifEmpty { book?.title ?: "Medical Textbook" }
-
-                // 1. Record telemetry to permanent StudyMetricsManager
-                try {
-                    com.example.data.analytics.StudyMetricsManager.getInstance(applicationContext).recordStudySession(
-                        bookTitle = effectiveTitle,
-                        subject = bookSubject,
-                        durationMinutes = sessionDurationMins,
-                        pagesRead = sessionPagesRead
-                    )
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-                // 2. Ambient schedule reconciliation: any reading updates matching schedules
-                try {
-                    val currentSessionId = sessionId
-                    if (!currentSessionId.isNullOrBlank()) {
-                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
-                            .updateSessionProgress(currentSessionId, maxPageReached)
-                    }
-                    if (effectiveTitle.isNotBlank()) {
-                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
-                            .reconcileReadingProgress(effectiveTitle, maxPageReached)
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-                // 3. User movement tracking in /sdcard/Mulberry/.history/activity_events.json
-                try {
-                    com.example.util.MulberryHistoryManager.recordMovement(
-                        context = applicationContext,
-                        eventType = "READING_PROGRESS",
-                        book = book,
+                if (effectiveSlug.isNotBlank()) {
+                    bookDao.updateReadingProgressBySlug(
+                        slug = effectiveSlug,
                         page = currentPage,
-                        durationMinutes = sessionDurationMins,
-                        extraMetadata = mapOf("pagesRead" to sessionPagesRead.toString())
+                        percent = progressPercent.toInt(),
+                        timestamp = now
                     )
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                }
+
+                // Record truthful telemetry to /sdcard/Mulberry/reading_history.json
+                val resolvedBook = if (effectiveSlug.isNotBlank()) bookDao.getBookBySlug(effectiveSlug) else null
+                val resolvedTitle = bookTitle.ifEmpty { resolvedBook?.title ?: "Book" }
+                val resolvedSubject = resolvedBook?.subject ?: ""
+                val actualVisited = visitedPages.size.coerceAtLeast(1)
+
+                if (effectiveSlug.isNotBlank()) {
+                    com.example.util.MulberryStorageManager.recordReadingActivity(
+                        context = applicationContext,
+                        bookSlug = effectiveSlug,
+                        bookTitle = resolvedTitle,
+                        subject = resolvedSubject,
+                        lastReadPage = currentPage,
+                        totalPages = totalPages,
+                        durationSeconds = accumulatedActiveSeconds,
+                        startPage = initialOpenedPage,
+                        endPage = currentPage,
+                        pagesVisitedCount = actualVisited,
+                        sessionId = sessionId
+                    )
+                }
+
+                // Handle study session progress: strictly complete only if max target page is reached
+                val currentSessionId = sessionId
+                if (!currentSessionId.isNullOrBlank()) {
+                    val pagesVisited = if (sessionStartPage > 0) {
+                        (maxPageReached - sessionStartPage + 1).coerceAtLeast(1)
+                    } else {
+                        visitedPages.size.coerceAtLeast(1)
+                    }
+                    val activeMinutes = (accumulatedActiveSeconds / 60).toInt().coerceAtLeast(1)
+                    val isTargetReached = (sessionEndPage > 0 && maxPageReached >= sessionEndPage)
+
+                    if (isTargetReached) {
+                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                            .markCompleted(
+                                sessionId = currentSessionId,
+                                actualReadPages = pagesVisited,
+                                actualDurationMinutes = activeMinutes
+                            )
+                    } else {
+                        com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                            .updateIncrementalSessionProgress(
+                                sessionId = currentSessionId,
+                                actualReadPages = pagesVisited,
+                                actualDurationMinutes = activeMinutes
+                            )
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -998,6 +951,11 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        if (resumeTimestamp > 0L) {
+            val activeSeconds = ((System.currentTimeMillis() - resumeTimestamp) / 1000).coerceAtLeast(0)
+            accumulatedActiveSeconds += activeSeconds
+            resumeTimestamp = 0L
+        }
         saveReadingProgress()
         super.onPause()
     }
@@ -1044,134 +1002,6 @@ class ReaderActivity : AppCompatActivity() {
                 R.anim.book_close_enter,
                 R.anim.book_close_exit
             )
-        }
-    }
-}
-
-/**
- * Confetti particle cheering celebration banner with quick dismiss per user clarification.
- */
-@Composable
-private fun ScheduleCelebrationOverlay(
-    session: com.example.data.schedule.model.ReadingSession,
-    onContinueReading: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val colors = LocalMulberryColors.current
-    val infiniteTransition = rememberInfiniteTransition(label = "confetti_anim")
-    val animOffset by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "confetti_fall"
-    )
-
-    val confettiColors = remember {
-        listOf(
-            Color(0xFFFFD700), // Gold
-            Color(0xFF00E5FF), // Cyan
-            Color(0xFFFF4081), // Pink
-            Color(0xFF00E676), // Emerald
-            Color(0xFF7C4DFF), // Purple
-            Color(0xFFFF9100)  // Orange
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(top = 16.dp, start = 16.dp, end = 16.dp),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        // Falling animated confetti particle canvas
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val width = size.width
-            val height = size.height
-            for (i in 0 until 36) {
-                val seed = (i * 37) % 100 / 100f
-                val x = (seed * width + (animOffset * 90f)) % width
-                val speedFactor = 0.5f + (i % 5) * 0.25f
-                val y = ((animOffset * height * speedFactor) + (i * 26f)) % height
-                val particleColor = confettiColors[i % confettiColors.size]
-                val radius = 3.5f + (i % 4) * 2f
-                drawCircle(color = particleColor.copy(alpha = 0.85f), radius = radius, center = Offset(x, y))
-            }
-        }
-
-        // Celebration Banner with quick dismiss
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = colors.surfaceCard,
-            border = BorderStroke(1.5.dp, colors.primary),
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .widthIn(max = 480.dp)
-                .fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "🎉",
-                            fontSize = 20.sp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Schedule Completed!",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = colors.primary
-                        )
-                    }
-
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = FluentIcons.Dismiss24Regular,
-                            contentDescription = "Dismiss",
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Text(
-                    text = "You reached page ${session.endPage} for '${session.bookTitle}'!",
-                    fontFamily = InterFamily,
-                    fontSize = 13.sp,
-                    color = colors.textPrimary
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Button(
-                        onClick = onContinueReading,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-                    ) {
-                        Text(
-                            text = "Continue Reading",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.5.sp,
-                            color = colors.onPrimary
-                        )
-                    }
-                }
-            }
         }
     }
 }

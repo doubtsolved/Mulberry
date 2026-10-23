@@ -1,136 +1,72 @@
-# Desk & Library Refinement Plan
+# Implementation Plan - Schedule Completion Threshold, In-Progress Bar & Header Typography
 
-Refine the Desk dashboard header and layout order, compact the Study Planner cards with a present-date scroll clamp, bind My Library directly to `/sdcard/Mulberry/downloaded_books.json`, implement dynamic subject-based filtering for type folders, establish functional custom collections with dedicated material views and JSON persistence, and constrain HorizontalPager gesture switching to the root Desk Home.
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The following confirmed user choices govern this refinement:
-> - **Desk Page Header & Layout**: Header displays "Desk" only (no subtitle). Quick Access shortcuts move directly beneath the "Pick up where you left off" card, before "Your Week".
-> - **Study Planner Clamping & Compact Cards**: Week selector cannot navigate to future weeks beyond the current week (`weekOffset <= 0`). Schedule cards are compressed into slim, horizontal rows displaying cover, book title, details, and a quick read button.
-> - **Pager Gesture Gating**: Sideways swipe gestures on the main pager are disabled when navigating inside Desk sub-screens (My Library, Books Collection, Study Planner, Collection View), re-enabling only on root Desk Home.
-> - **My Library & Type Folders**:
->   - Downloaded items loaded directly from `/sdcard/Mulberry/downloaded_books.json`.
->   - Sub-texts removed from "My Library", "Downloaded Books", and "YOUR COLLECTIONS". Font sizes increased.
->   - Type folders (Books, Notes, PYQs, Handouts, etc.) appear dynamically only when $\ge 1$ item exists.
->   - Entering a type folder displays dynamic **Subject filter chips** (Biochemistry, Physiology, Anatomy, etc.), with in-progress/bookmarked metric cards and status chips removed.
-> - **Functional Custom Collections**:
->   - Backed by `/sdcard/Mulberry/.history/collections.json`.
->   - Users can add any book to any collection via a selection dialog.
->   - Tapping a collection launches a dedicated collection materials screen with subject filters.
->   - Eye-pleasing, theme-adaptive vibrant solid gradient cards for all type and collection folders.
+Ensure reading schedule sessions are marked completed **only** when the user reads to or beyond the maximum scheduled end page, dynamically preserve and display partial reading progress on session cards, and increase the heading typography for "TODAY'S FOCUS" and "Shelf" to a prominent 20sp bold title style.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Confirmed User Requirements & Design Choices
 
-- **Purpose**: Polish user navigation and material management. Elevates primary actions, eliminates redundant visual clutter, enforces realistic reading schedule constraints, and enables true intent-based material organization.
-- **Key Deliverables**:
-  1. Desk visual reorganization (compact title, reordered Quick Access).
-  2. Compact Study Planner timeline cards and future-week lock.
-  3. Real JSON-backed offline textbook sync in My Library.
-  4. Dynamic subject-filtered bookshelf view.
-  5. Interactive user collection engine with item assignment and dedicated viewer.
-  6. Sub-screen touch gesture protection preventing accidental tab switches.
+| Requirement | Specification | Implementation Detail |
+| :--- | :--- | :--- |
+| **Schedule Completion Threshold** | Mark complete **only** when reading reaches or exceeds scheduled `endPage` (`maxPageReached >= sessionEndPage`). | In `ReaderActivity.kt`, remove `|| isFinishing` from completion check. Closing/exiting before reaching `sessionEndPage` saves partial progress via `updateIncrementalSessionProgress` without flagging `isCompleted = true`. |
+| **In-Progress Reading Indicator** | Dynamically fill the progress bar on `TodayFocusSessionCard` as reading proceeds. | Replace hardcoded `0.35f` progress with `(actualPagesRead.toFloat() / totalPages.toFloat()).coerceIn(0f, 1f)`. Display read page count (e.g., `"5 / 20 pages"`) below the bar. |
+| **Heading Font Size** | Increase "TODAY'S FOCUS" and "Shelf" heading font size to prominent 20sp bold. | Update `SectionHeader` in `DeskRootScreen.kt` with `fontSize = 20.sp`, `fontWeight = FontWeight.Bold`, `color = colors.textPrimary`, `letterSpacing = (-0.3).sp`, and proportional icon sizing. |
 
 ---
 
-## 2. User Experience & Visual Design
+## 2. Proposed Changes
 
-### 01. Desk Refinement
-- **Header**: Clean, bold "Desk" (28sp, Poppins Bold), profile avatar on right. Sub-text removed.
-- **Section Sequence**:
-  1. Date label (`TUESDAY, OCTOBER 20`)
-  2. `PICK UP WHERE YOU LEFT OFF` card with progress-filled `RESUME READING ↗` CTA.
-  3. `QUICK ACCESS` (My Library & Study Planner cards immediately accessible).
-  4. `YOUR WEEK` reading goal card with 7-day strip.
-  5. `RECENTLY ADDED` horizontal carousel.
-  6. `☕ Keep Mulberry growing` support card.
-
-### 02. Compact Schedule Cards (Study Planner)
-```text
-┌────────────────────────────────────────────────────────┐
-│ [COVER] Guyton & Hall Physiology                       │
-│         Pages 140–160 · 40 min            [▶ Read]    │
-└────────────────────────────────────────────────────────┘
-```
-- Slim card height (~58–64dp), book cover on left, title and page/duration detail in center, compact circular or pill read action on right.
-- Week navigation clamp: Next week button (`>`) is disabled when `weekOffset == 0`.
-
-### 03. My Library & Type Folders
-- Large header: **My Library** (26sp), no subtitle.
-- **Downloaded Books** section title (18sp Bold, no subtitle).
-- Dynamic Type Folders: Horizontally scrollable vibrant gradient cards (e.g., Deep Crimson, Royal Indigo, Teal, Warm Amber) reflecting only existing types in `downloaded_books.json`.
-- Type Folder View:
-  - Header: `[←] DOWNLOADED / [Type Name]`
-  - Dynamic subject chips: `[All]`, `[Biochemistry]`, `[Physiology]`, `[Anatomy]`, etc.
-  - Clean 2-column bookshelf grid.
-
-### 04. Custom Collections (Functional)
-- Section title: **YOUR COLLECTIONS** (no subtitle).
-- Curated cards with item count and vibrant theme-adaptive gradients.
-- `[+]` button creates new collections stored in `/sdcard/Mulberry/.history/collections.json`.
-- Tapping a collection opens the dedicated collection view with subject filters, reading launch, and remove-from-collection actions.
-- Shared Book-Action Modal includes "Add to collection" dialog with checklist of existing collections.
+### A. Reading Session Completion & Progress Tracking (`ReaderActivity.kt`)
+* **File**: `app/src/main/java/com/example/ui/reader/ReaderActivity.kt`
+* **Changes**:
+  1. In `saveReadingProgress()` (around line 927):
+     * Change completion condition from `if (isTargetReached || isFinishing)` to strictly `if (isTargetReached)`.
+     * `isTargetReached` evaluates `(sessionEndPage > 0 && maxPageReached >= sessionEndPage)`.
+     * If `isTargetReached == false` when exiting or pausing: invoke `ScheduleRepository.updateIncrementalSessionProgress(sessionId, actualReadPages = pagesVisited, actualDurationMinutes = activeMinutes)`.
+     * If `isTargetReached == true`: invoke `ScheduleRepository.markCompleted(sessionId, actualReadPages = pagesVisited, actualDurationMinutes = activeMinutes)`.
+  2. Compute `pagesVisited` accurately relative to `sessionStartPage`:
+     * `val pagesVisited = if (sessionStartPage > 0) (maxPageReached - sessionStartPage + 1).coerceAtLeast(1) else visitedPages.size.coerceAtLeast(1)`
 
 ---
 
-## 3. Technical Architecture & Data Strategy
-
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                             MainActivity.kt                             │
-│   HorizontalPager (userScrollEnabled = isAtRootDeskHome || !isDeskTab)  │
-└────────────────────────────────────┬────────────────────────────────────┘
-                                     │
-                                     ▼
-                          DeskRootScreen.kt
-                 (Destination State + BackHandler)
-   ┌─────────────────┬─────────────────┬─────────────────┬────────────────┐
-   ▼                 ▼                 ▼                 ▼                ▼
-DeskDashboard    MyLibraryScreen  BooksCollection  StudyPlanner   CollectionDetail
- - Header: "Desk" - Downloaded    - Subject chips  - Clamped      - Dedicated
- - Quick Access     Books JSON    - No status        week <= 0      materials
-   under Resume   - Dynamic         cards          - Compact      - Subject
- - Your Week        Type Folders  - 2-Col Grid       cards          filters
- - Recent / Coffee- Collections
-```
-
-### Data Synchronization
-1. **Downloaded Books**: Directly loads `/sdcard/Mulberry/downloaded_books.json` via `MulberryStorageManager.loadTrackingIndex(context)`, falling back to Room database if file is absent.
-2. **Collections JSON**: Stored at `/sdcard/Mulberry/.history/collections.json`:
-   ```json
-   {
-     "version": 1,
-     "collections": [
-       {
-         "id": "col_1",
-         "name": "First Year MBBS",
-         "description": "Core preclinical resources",
-         "bookSlugs": ["harpers-illustrated-biochemistry", "guiding-notes-anatomy"]
+### B. Desk Session Card In-Progress Visualizer (`DeskRootScreen.kt`)
+* **File**: `app/src/main/java/com/example/ui/screens/desk/DeskRootScreen.kt`
+* **Changes**:
+  1. In `TodayFocusSessionCard` (lines 1066-1089):
+     * Compute actual progress fraction:
+       ```kotlin
+       val readProgress = if (isCompleted) 1f else {
+           (session.actualPagesRead.toFloat() / session.totalPages.toFloat()).coerceIn(0f, 1f)
        }
-     ]
-   }
-   ```
-3. **Pager Gesture Gating**: `isAtDeskHome: Boolean` tracked and passed upward to `MainActivity` so `userScrollEnabled` on `HorizontalPager` is set to `false` when user enters any sub-screen.
+       ```
+     * In the status row below the progress bar:
+       * When completed: `"Completed"` (in `colors.primary`)
+       * When in-progress with pages read: `"${session.actualPagesRead}/${session.totalPages} pages"` (in `colors.textSecondary`)
+       * When not yet started: `"0/${session.totalPages} pages"` or `"Not started"`
 
 ---
 
-## 4. Execution Steps
+### C. Prominent Section Headers (`DeskRootScreen.kt`)
+* **File**: `app/src/main/java/com/example/ui/screens/desk/DeskRootScreen.kt`
+* **Changes**:
+  1. In `SectionHeader` (lines 1512-1555):
+     * Increase title `fontSize` from `12.sp` to `20.sp`.
+     * Update title `fontWeight` to `FontWeight.Bold` and `color` to `colors.textPrimary` (for high visual hierarchy).
+     * Adjust title `letterSpacing` to `(-0.3).sp` suitable for modern title typography.
+     * Scale accompanying icon (e.g. for Shelf) from `16.dp` to `20.dp` to align with the larger title text.
+     * Ensure vertical padding and alignment remain balanced on both mobile and tablet viewport widths.
 
-1. **Desk Page Layout Update**:
-   - Update `DeskDashboardScreen.kt`: Change header to "Desk", remove subtitle, move Quick Access cards above "Your Week".
-2. **Study Planner Update**:
-   - Update `StudyPlannerScreen.kt`: Disable forward week navigation when at current week, convert session cards to compact horizontal rows.
-3. **Pager Gesture Gating**:
-   - Update `DeskRootScreen.kt` and `MainActivity.kt` to disable `userScrollEnabled` when inside Desk sub-destinations.
-4. **My Library Data & Folder Overhaul**:
-   - Update `MyLibraryScreen.kt` to load from `downloaded_books.json`, remove subtexts, enlarge section headings, generate dynamic type cards with vibrant gradient backgrounds.
-5. **Books & Type Folder Subject Filter Overhaul**:
-   - Update `BooksCollectionScreen.kt` (or generalized `TypeMaterialsScreen.kt`): remove metric summary cards and status chips; inject dynamic subject chips derived from downloaded items.
-6. **Functional Collections Engine**:
-   - Update `MulberryHistoryManager.kt` to support adding/removing book slugs in collections.
-   - Add collection picker dialog to `SharedBookActionModal.kt`.
-   - Add dedicated `CollectionDetailScreen.kt` to view collection contents.
-7. **Verify & Test**:
-   - Run `compile_applet` and unit tests to ensure clean compilation.
+---
+
+## 3. Verification & Testing
+
+1. **Compilation Check**: Run `compile_applet` to confirm clean compilation with no syntax or type mismatches.
+2. **Session Partial Progress Verification**:
+   - Create/open a scheduled session (e.g., pages 1–20).
+   - Read pages 1 to 5 and exit via back navigation (`isFinishing`).
+   - Verify in `DeskRootScreen` that the session remains uncompleted, the progress bar shows 25% (5/20 pages), and sub-label shows `"5/20 pages"`.
+3. **Session Completion Verification**:
+   - Reopen the session, navigate to or past page 20 (`maxPageReached >= 20`).
+   - Exit the reader; verify session is marked complete (`isCompleted = true`), checkmark displays, and progress bar shows 100%.
+4. **Header Visual Inspection**:
+   - Verify both "TODAY'S FOCUS" and "Shelf" headers render at 20sp bold with crisp typography and matching icon heights.

@@ -335,7 +335,7 @@ fun SharedBookActionModal(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(collections) { col ->
-                                val isInCollection = col.bookSlugs.contains(bookSlug)
+                                val isInCollection = col.books.any { (it.slug.isNotBlank() && it.slug == bookSlug) || it.id == book.id } || col.bookSlugs.contains(bookSlug)
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = if (isInCollection) colors.primary.copy(alpha = 0.15f) else colors.surfaceCard,
@@ -351,7 +351,7 @@ fun SharedBookActionModal(
                                                 MulberryHistoryManager.removeBookFromCollection(context, col.id, bookSlug)
                                                 Toast.makeText(context, "Removed from \"${col.name}\"", Toast.LENGTH_SHORT).show()
                                             } else {
-                                                MulberryHistoryManager.addBookToCollection(context, col.id, bookSlug)
+                                                MulberryHistoryManager.addBookToCollection(context, col.id, book)
                                                 Toast.makeText(context, "Added to \"${col.name}\"", Toast.LENGTH_SHORT).show()
                                             }
                                             showCollectionPicker = false
@@ -455,7 +455,7 @@ fun SharedBookActionModal(
                             val updated = MulberryHistoryManager.loadCollections(context)
                             val created = updated.find { it.name == newCollectionName.trim() }
                             if (created != null) {
-                                MulberryHistoryManager.addBookToCollection(context, created.id, bookSlug)
+                                MulberryHistoryManager.addBookToCollection(context, created.id, book)
                             }
                             Toast.makeText(context, "Collection created and book added!", Toast.LENGTH_SHORT).show()
                             newCollectionName = ""

@@ -5,8 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.MulberryDatabase
 import com.example.data.model.BookEntity
-import com.example.data.model.VaultEntity
-import com.example.viewmodel.rootPath
 import com.example.data.schedule.ScheduleRepository
 import com.example.data.schedule.model.ReadingSession
 import com.example.data.schedule.model.ScheduleVaultFile
@@ -21,7 +19,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
 import java.util.Calendar
 
 class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -31,31 +28,12 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
 
     val scheduleState: StateFlow<ScheduleVaultFile> = scheduleRepo.scheduleState
 
-    private val _activeVault = MutableStateFlow<VaultEntity?>(null)
-    val activeVault: StateFlow<VaultEntity?> = _activeVault.asStateFlow()
-
-    private val _vaultBooks = MutableStateFlow<List<BookEntity>>(emptyList())
-    val vaultBooks: StateFlow<List<BookEntity>> = _vaultBooks.asStateFlow()
-
     private val downloadManager = com.example.util.BookDownloadManager.getInstance(app, db.bookDao())
 
-    val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().map { roomBooks ->
-        val jsonBooks = com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app)
-        if (jsonBooks.isNotEmpty()) {
-            jsonBooks
-        } else if (roomBooks.isNotEmpty()) {
-            for (b in roomBooks) {
-                val bin = File(b.binFilePath)
-                com.example.util.MulberryStorageManager.recordDownloadedBook(app, b, bin)
-            }
-            com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app).ifEmpty { roomBooks }
-        } else {
-            emptyList()
-        }
-    }.stateIn(
+    val downloadedBooks: StateFlow<List<BookEntity>> = db.bookDao().getDownloadedBooks().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = com.example.util.MulberryStorageManager.loadDownloadedBooksAsEntities(app)
+        initialValue = emptyList()
     )
 
     val allCatalogBooks: StateFlow<List<BookEntity>> = db.bookDao().getAllBooks().stateIn(
@@ -66,7 +44,6 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
 
     fun deleteDownloadedBook(book: BookEntity) {
         viewModelScope.launch {
-            com.example.util.MulberryStorageManager.removeDownloadedBook(app, book.slug.ifEmpty { "book_${book.id}" })
             downloadManager.deleteDownload(book)
         }
     }
@@ -75,38 +52,10 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     init {
-        // Synchronize physical /sdcard/Mulberry/ storage with database
+        // Synchronize physical /sdcard/Mulberry/ storage with database immediately
         viewModelScope.launch(Dispatchers.IO) {
             com.example.util.MulberryStorageManager.syncDiskWithDatabase(app, db.bookDao())
-        }
-
-        // Observe database vaults and active vault selection
-        viewModelScope.launch {
-            db.vaultDao().getAllVaults().collect { vaults ->
-                val prefs = app.getSharedPreferences("mulberry_prefs", android.content.Context.MODE_PRIVATE)
-                val activeId = prefs.getString("active_vault_id", null)
-                val current = vaults.find { it.id.toString() == activeId } ?: vaults.firstOrNull()
-                _activeVault.value = current
-                if (current != null) {
-                    scheduleRepo.setActiveVaultPath(current.rootPath)
-                    refreshBooksForVault(current.id)
-                }
-            }
-        }
-    }
-
-    fun syncActiveVault(vault: VaultEntity?) {
-        if (vault == null) return
-        _activeVault.value = vault
-        scheduleRepo.setActiveVaultPath(vault.rootPath)
-        refreshBooksForVault(vault.id)
-    }
-
-    private fun refreshBooksForVault(vaultId: Int) {
-        viewModelScope.launch {
-            db.bookDao().getBooksByVault(vaultId).collect { books ->
-                _vaultBooks.value = books
-            }
+            scheduleRepo.loadSchedule()
         }
     }
 
@@ -152,15 +101,15 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     // Active Today Sessions (Scheduled for today, or overdue from past, not completed)
     val activeTodaySessions: StateFlow<List<ReadingSession>> = scheduleState.map { file ->
         val (_, endOfToday) = getTodayBounds()
-        file.sessions.filterIsInstance<ReadingSession>()
+        file.sessions
             .filter { !it.isCompleted && it.scheduledEpochMillis <= endOfToday }
-            .sortedBy { it.scheduledEpochMillis }
+            .sortedBy { it.snoozedUntilEpochMillis ?: it.scheduledEpochMillis }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Completed Today Sessions
     val completedTodaySessions: StateFlow<List<ReadingSession>> = scheduleState.map { file ->
         val (startOfToday, endOfToday) = getTodayBounds()
-        file.sessions.filterIsInstance<ReadingSession>()
+        file.sessions
             .filter { it.isCompleted && (it.completedEpochMillis ?: it.scheduledEpochMillis) in startOfToday..endOfToday }
             .sortedByDescending { it.completedEpochMillis ?: it.scheduledEpochMillis }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -168,7 +117,7 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     // Tomorrow Sessions (Not completed)
     val tomorrowSessions: StateFlow<List<ReadingSession>> = scheduleState.map { file ->
         val (startOfTomorrow, endOfTomorrow) = getTomorrowBounds()
-        file.sessions.filterIsInstance<ReadingSession>()
+        file.sessions
             .filter { !it.isCompleted && it.scheduledEpochMillis in startOfTomorrow..endOfTomorrow }
             .sortedBy { it.scheduledEpochMillis }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -176,7 +125,7 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     // Upcoming Sessions (After tomorrow, not completed)
     val upcomingSessions: StateFlow<List<ReadingSession>> = scheduleState.map { file ->
         val (_, endOfTomorrow) = getTomorrowBounds()
-        file.sessions.filterIsInstance<ReadingSession>()
+        file.sessions
             .filter { !it.isCompleted && it.scheduledEpochMillis > endOfTomorrow }
             .sortedBy { it.scheduledEpochMillis }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -186,8 +135,16 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
         file.weeklyGoalPages.coerceAtLeast(10)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 200)
 
+    val weeklyGoalMinutes: StateFlow<Int> = scheduleState.map { file ->
+        file.weeklyGoalMinutes.coerceAtLeast(30)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 420)
+
     val weeklyCompletedPages: StateFlow<Int> = scheduleState.map { file ->
         scheduleRepo.getWeeklyCompletedPages(file.sessions)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val weeklyCompletedMinutes: StateFlow<Int> = scheduleState.map { file ->
+        scheduleRepo.getWeeklyCompletedMinutes(file.sessions)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val weeklyPlannedPages: StateFlow<Int> = scheduleState.map { file ->
@@ -211,20 +168,16 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
         reminderMinutesBefore: Int,
         microNote: String
     ) {
-        val vaultPath = _activeVault.value?.rootPath
-            ?: com.example.util.MulberryStorageManager.getMulberryDirectory(app).absolutePath
-        val relPath = if (book.uriString.startsWith(vaultPath)) {
-            book.uriString.removePrefix(vaultPath).trimStart('/')
-        } else {
-            book.fileName
-        }
+        val totalPages = (endPage - startPage + 1).coerceAtLeast(1)
+        val plannedMinutes = totalPages * 2
         val session = ReadingSession(
-            vaultPath = vaultPath,
-            bookFileName = book.fileName.ifEmpty { book.uriString },
-            bookRelativePath = relPath,
+            bookSlug = book.slug.ifEmpty { "book_${book.id}" },
             bookTitle = book.title,
+            subject = book.subject.ifEmpty { "General" },
+            resourceType = book.type.ifEmpty { "BOOK" },
             startPage = startPage,
             endPage = endPage,
+            plannedDurationMinutes = plannedMinutes,
             scheduledEpochMillis = scheduledEpochMillis,
             reminderMinutesBefore = reminderMinutesBefore,
             microNote = microNote.trim()
@@ -234,50 +187,53 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
             MulberryAnalytics.logStudyGoalCreated(
                 subject = book.subject.ifEmpty { "General" },
                 chapter = book.title,
-                pageCount = (endPage - startPage + 1).coerceAtLeast(1)
+                pageCount = totalPages
             )
-            // Persist progress to /sdcard/Mulberry/.schedule/reading_progress.json
-            runCatching {
-                com.example.util.MulberryStorageManager.recordReadingProgress(
-                    context = app,
-                    book = book,
-                    newLastReadPage = startPage
-                )
-            }
-        }
-    }
-
-    private val _scheduleHistory = MutableStateFlow<List<com.example.data.schedule.model.ScheduleHistoryEntry>>(emptyList())
-    val scheduleHistory: StateFlow<List<com.example.data.schedule.model.ScheduleHistoryEntry>> = _scheduleHistory.asStateFlow()
-
-    fun loadScheduleHistory() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _scheduleHistory.value = scheduleRepo.loadScheduleHistory()
+            // Bug Fix 4: Do NOT call MulberryStorageManager.recordReadingProgress() here!
+            // Scheduling a future session must NEVER overwrite lastReadPage or log false reading progress.
         }
     }
 
     fun editSession(updatedSession: ReadingSession) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.updateSession(updatedSession)
-            loadScheduleHistory()
+        }
+    }
+
+    fun snoozeSession(sessionId: String, minutes: Int = 30) {
+        viewModelScope.launch(Dispatchers.IO) {
+            scheduleRepo.snoozeSession(sessionId, minutes)
         }
     }
 
     fun markCompleted(sessionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            scheduleRepo.markCompleted(sessionId)
             val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
+            scheduleRepo.markCompleted(sessionId)
             if (session != null) {
-                val book = downloadedBooks.value.find { it.title == session.bookTitle }
+                // Bug Fix 5: Direct Room DAO lookup by slug instead of cold StateFlow matching
+                val book = db.bookDao().getBookBySlug(session.bookSlug)
+                    ?: db.bookDao().getAllBooksSync().find { it.title.equals(session.bookTitle, ignoreCase = true) }
                 MulberryAnalytics.logStudyGoalCompleted(
-                    subject = book?.subject?.ifEmpty { "General" } ?: "General",
+                    subject = book?.subject?.ifEmpty { session.subject.ifEmpty { "General" } } ?: "General",
                     chapter = session.bookTitle
                 )
                 if (book != null) {
-                    com.example.util.MulberryStorageManager.recordReadingProgress(
+                    val targetPage = session.endPage.coerceIn(1, book.pageCount.coerceAtLeast(1))
+                    val percent = ((targetPage.toFloat() / book.pageCount.coerceAtLeast(1).toFloat()) * 100f).toInt()
+                    db.bookDao().updateReadingProgress(book.id, targetPage, percent)
+                    com.example.util.MulberryStorageManager.recordReadingActivity(
                         context = app,
-                        book = book,
-                        newLastReadPage = session.endPage
+                        bookSlug = book.slug,
+                        bookTitle = book.title,
+                        subject = book.subject,
+                        lastReadPage = targetPage,
+                        totalPages = book.pageCount,
+                        durationSeconds = (session.plannedDurationMinutes * 60L),
+                        startPage = session.startPage,
+                        endPage = session.endPage,
+                        pagesVisitedCount = session.totalPages,
+                        sessionId = session.id
                     )
                 }
             }
@@ -286,24 +242,37 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
 
     fun toggleCompleted(sessionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId } ?: return@launch
+            val willBeCompleted = !session.isCompleted
             scheduleRepo.toggleCompleted(sessionId)
-            val session = scheduleRepo.scheduleState.value.sessions.find { it.id == sessionId }
-            if (session != null) {
-                val book = downloadedBooks.value.find { it.title == session.bookTitle }
-                if (session.isCompleted) {
-                    MulberryAnalytics.logStudyGoalCompleted(
-                        subject = book?.subject?.ifEmpty { "General" } ?: "General",
-                        chapter = session.bookTitle
-                    )
-                }
-                if (book != null) {
-                    val targetPage = if (session.isCompleted) session.endPage else session.startPage
-                    com.example.util.MulberryStorageManager.recordReadingProgress(
-                        context = app,
-                        book = book,
-                        newLastReadPage = targetPage
-                    )
-                }
+
+            // Bug Fix 5: Direct Room DAO lookup by slug
+            val book = db.bookDao().getBookBySlug(session.bookSlug)
+                ?: db.bookDao().getAllBooksSync().find { it.title.equals(session.bookTitle, ignoreCase = true) }
+
+            if (willBeCompleted) {
+                MulberryAnalytics.logStudyGoalCompleted(
+                    subject = book?.subject?.ifEmpty { session.subject.ifEmpty { "General" } } ?: "General",
+                    chapter = session.bookTitle
+                )
+            }
+            if (book != null && willBeCompleted) {
+                val targetPage = session.endPage.coerceIn(1, book.pageCount.coerceAtLeast(1))
+                val percent = ((targetPage.toFloat() / book.pageCount.coerceAtLeast(1).toFloat()) * 100f).toInt()
+                db.bookDao().updateReadingProgress(book.id, targetPage, percent)
+                com.example.util.MulberryStorageManager.recordReadingActivity(
+                    context = app,
+                    bookSlug = book.slug,
+                    bookTitle = book.title,
+                    subject = book.subject,
+                    lastReadPage = targetPage,
+                    totalPages = book.pageCount,
+                    durationSeconds = (session.plannedDurationMinutes * 60L),
+                    startPage = session.startPage,
+                    endPage = session.endPage,
+                    pagesVisitedCount = session.totalPages,
+                    sessionId = session.id
+                )
             }
         }
     }
@@ -320,26 +289,15 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
         }
     }
 
-    fun updateWeeklyGoal(newGoal: Int) {
+    fun updateWeeklyGoal(newGoalPages: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            scheduleRepo.updateWeeklyGoal(newGoal)
+            scheduleRepo.updateWeeklyGoal(newGoalPages)
         }
     }
 
-    fun autoResolveMissingBook(session: ReadingSession, vaultPath: String) {
+    fun updateWeeklyGoalMinutes(newGoalMinutes: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                val vaultDir = File(vaultPath)
-                if (!vaultDir.exists() || !vaultDir.isDirectory) return@runCatching
-                val found = vaultDir.walkTopDown().firstOrNull {
-                    it.isFile && (it.name.equals(session.bookFileName, ignoreCase = true) ||
-                            (session.bookRelativePath.isNotBlank() && it.name.equals(File(session.bookRelativePath).name, ignoreCase = true)))
-                }
-                if (found != null) {
-                    val rel = found.absolutePath.removePrefix(vaultPath).trimStart('/')
-                    scheduleRepo.updateBookRelativePath(session.id, rel)
-                }
-            }
+            scheduleRepo.updateWeeklyGoalMinutes(newGoalMinutes)
         }
     }
 
@@ -350,14 +308,10 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
             try {
                 com.example.util.MulberryStorageManager.syncDiskWithDatabase(getApplication(), db.bookDao())
                 scheduleRepo.loadSchedule()
-                val current = _activeVault.value
-                if (current != null) {
-                    refreshBooksForVault(current.id)
-                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                delay(400)
+                delay(300)
                 _isRefreshing.value = false
             }
         }

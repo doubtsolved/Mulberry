@@ -49,7 +49,8 @@ data class ActivityEventsIndex(
 )
 
 /**
- * Custom collections created by user, stored in /sdcard/Mulberry/.history/collections.json
+ * Custom collections created by user, stored in /sdcard/Mulberry/.history/collection.json
+ * Contains collection based folders and books in it details along with their complete metadata.
  */
 data class CustomCollectionItem(
     @SerializedName("id") val id: String = UUID.randomUUID().toString(),
@@ -57,6 +58,7 @@ data class CustomCollectionItem(
     @SerializedName("description") val description: String = "",
     @SerializedName("resourceCount") val resourceCount: Int = 0,
     @SerializedName("bookSlugs") val bookSlugs: List<String> = emptyList(),
+    @SerializedName("books") val books: List<BookEntity> = emptyList(),
     @SerializedName("createdAt") val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -72,7 +74,8 @@ data class CollectionsIndex(
 object MulberryHistoryManager {
     private const val TAG = "MulberryHistoryManager"
     private const val HISTORY_FILE_NAME = "activity_events.json"
-    private const val COLLECTIONS_FILE_NAME = "collections.json"
+    private const val COLLECTIONS_FILE_NAME = "collection.json"
+    private const val LEGACY_COLLECTIONS_FILE_NAME = "collections.json"
 
     private val gson by lazy {
         GsonBuilder()
@@ -101,7 +104,15 @@ object MulberryHistoryManager {
     }
 
     fun getCollectionsJsonFile(context: Context): File {
-        return File(getHistoryDirectory(context), COLLECTIONS_FILE_NAME)
+        val dir = getHistoryDirectory(context)
+        val target = File(dir, COLLECTIONS_FILE_NAME)
+        if (!target.exists()) {
+            val legacy = File(dir, LEGACY_COLLECTIONS_FILE_NAME)
+            if (legacy.exists()) {
+                runCatching { legacy.copyTo(target, overwrite = true) }
+            }
+        }
+        return target
     }
 
     /**
@@ -312,11 +323,29 @@ object MulberryHistoryManager {
                     col.id == "ee42f806-e7e5-400e-a87d-6962b83915d0" ||
                     col.id == "d758cefb-81c0-4a8a-a508-708a53942595"
                 }
-                if (cleanedList.size != rawList.size) {
-                    saveCollections(context, cleanedList)
+
+                // Ensure complete book metadata objects are embedded
+                val downloadedBooks: List<BookEntity> = MulberryStorageManager.loadDownloadedBooks(context)
+                val enrichedList = cleanedList.map { col ->
+                    if (col.books.isEmpty() && col.bookSlugs.isNotEmpty()) {
+                        val resolvedBooks = downloadedBooks.filter { b: BookEntity ->
+                            val slug = b.slug.ifEmpty { "book_${b.id}" }
+                            col.bookSlugs.contains(slug) || col.bookSlugs.contains(b.title)
+                        }
+                        col.copy(
+                            books = resolvedBooks,
+                            resourceCount = resolvedBooks.size
+                        )
+                    } else {
+                        col.copy(resourceCount = if (col.books.isNotEmpty()) col.books.size else col.bookSlugs.size)
+                    }
                 }
-                _collectionsFlow.value = cleanedList
-                cleanedList
+
+                if (enrichedList != rawList) {
+                    saveCollections(context, enrichedList)
+                }
+                _collectionsFlow.value = enrichedList
+                enrichedList
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed reading collections: ${e.message}", e)
@@ -350,25 +379,30 @@ object MulberryHistoryManager {
             name = name.trim(),
             description = description.trim(),
             resourceCount = 0,
-            bookSlugs = emptyList()
+            bookSlugs = emptyList(),
+            books = emptyList()
         )
         current.add(newCol)
         saveCollections(context, current)
     }
 
     /**
-     * Adds a book slug to a specific collection.
+     * Adds a complete book metadata object to a specific collection.
      */
-    fun addBookToCollection(context: Context, collectionId: String, bookSlug: String) {
+    fun addBookToCollection(context: Context, collectionId: String, book: BookEntity) {
         val current = loadCollections(context).toMutableList()
         val index = current.indexOfFirst { it.id == collectionId }
         if (index != -1) {
             val col = current[index]
-            if (!col.bookSlugs.contains(bookSlug)) {
-                val updatedSlugs = col.bookSlugs + bookSlug
+            val slug = book.slug.ifEmpty { "book_${book.id}" }
+            val alreadyPresent = col.books.any { (it.slug.isNotBlank() && it.slug == slug) || it.id == book.id }
+            if (!alreadyPresent) {
+                val updatedBooks = col.books + book
+                val updatedSlugs = if (col.bookSlugs.contains(slug)) col.bookSlugs else (col.bookSlugs + slug)
                 current[index] = col.copy(
+                    books = updatedBooks,
                     bookSlugs = updatedSlugs,
-                    resourceCount = updatedSlugs.size
+                    resourceCount = updatedBooks.size
                 )
                 saveCollections(context, current)
             }
@@ -376,17 +410,37 @@ object MulberryHistoryManager {
     }
 
     /**
-     * Removes a book slug from a specific collection.
+     * Overload to add by bookSlug (resolves book metadata from downloaded books).
      */
-    fun removeBookFromCollection(context: Context, collectionId: String, bookSlug: String) {
+    fun addBookToCollection(context: Context, collectionId: String, bookSlug: String) {
+        val downloaded: List<BookEntity> = MulberryStorageManager.loadDownloadedBooks(context)
+        val matched = downloaded.find { it.slug == bookSlug || it.id.toString() == bookSlug || it.title.equals(bookSlug, ignoreCase = true) }
+            ?: BookEntity(
+                id = (bookSlug.hashCode() and 0x7FFFFFFF),
+                title = bookSlug,
+                author = "",
+                subject = "Medical",
+                isDownloaded = true
+            )
+        addBookToCollection(context, collectionId, matched)
+    }
+
+    /**
+     * Removes a book from a specific collection by slug or ID.
+     */
+    fun removeBookFromCollection(context: Context, collectionId: String, bookSlugOrId: String) {
         val current = loadCollections(context).toMutableList()
         val index = current.indexOfFirst { it.id == collectionId }
         if (index != -1) {
             val col = current[index]
-            val updatedSlugs = col.bookSlugs.filterNot { it == bookSlug }
+            val updatedBooks = col.books.filterNot {
+                it.slug == bookSlugOrId || it.id.toString() == bookSlugOrId || it.title.equals(bookSlugOrId, ignoreCase = true)
+            }
+            val updatedSlugs = col.bookSlugs.filterNot { it == bookSlugOrId }
             current[index] = col.copy(
+                books = updatedBooks,
                 bookSlugs = updatedSlugs,
-                resourceCount = updatedSlugs.size
+                resourceCount = updatedBooks.size
             )
             saveCollections(context, current)
         }

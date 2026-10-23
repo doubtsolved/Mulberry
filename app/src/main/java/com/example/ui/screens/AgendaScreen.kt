@@ -41,6 +41,7 @@ import com.example.viewmodel.MulberryViewModel
 import kotlin.math.cos
 import kotlin.math.sin
 
+@Deprecated("Placeholder agenda screen. Replaced by DeskRootScreen and ScheduleRepository")
 @Composable
 fun AgendaScreen(
     viewModel: MulberryViewModel,

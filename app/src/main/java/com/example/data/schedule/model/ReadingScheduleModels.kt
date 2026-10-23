@@ -6,7 +6,9 @@ import java.util.UUID
 
 @Keep
 data class ScheduleVaultFile(
-    @SerializedName("version") val version: Int = 1,
+    @SerializedName("version") val version: Int = 2,
+    @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
+    @SerializedName("weeklyGoalMinutes") val weeklyGoalMinutes: Int = 420, // 7 hours default
     @SerializedName("weeklyGoalPages") val weeklyGoalPages: Int = 200,
     @SerializedName("sessions") val sessions: List<ReadingSession> = emptyList()
 )
@@ -14,67 +16,82 @@ data class ScheduleVaultFile(
 @Keep
 data class ReadingSession(
     @SerializedName("id") val id: String = UUID.randomUUID().toString(),
-    @SerializedName("vaultPath") val vaultPath: String = "",              // Absolute root path of containing vault
-    @SerializedName("bookFileName") val bookFileName: String = "",           // Base file name (e.g., "Guyton.pdf")
-    @SerializedName("bookRelativePath") val bookRelativePath: String = "",  // Relative path in vault (e.g., "1st_Prof/Biochem/Satyanarayan.pdf")
-    @SerializedName("bookTitle") val bookTitle: String = "",              // Human-readable title
-    @SerializedName("startPage") val startPage: Int = 1,                 // 1-indexed start page
-    @SerializedName("endPage") val endPage: Int = 1,                   // 1-indexed end page
-    @SerializedName("currentPageReached") val currentPageReached: Int = startPage, // 1-indexed live page reached
-    @SerializedName("scheduledEpochMillis") val scheduledEpochMillis: Long = 0L,     // Target start timestamp
-    @SerializedName("reminderMinutesBefore") val reminderMinutesBefore: Int = 15, // 0, 15, 30, 60 (-1 = disabled)
-    @SerializedName("microNote") val microNote: String = "",         // Short focus label (e.g., "Aortic valve murmurs")
+    @SerializedName("bookSlug") val bookSlug: String = "",
+    @SerializedName("bookTitle") val bookTitle: String = "",
+    @SerializedName("subject") val subject: String = "",
+    @SerializedName("resourceType") val resourceType: String = "BOOK", // BOOK, NOTES, PYQ
+    @SerializedName("startPage") val startPage: Int = 1,
+    @SerializedName("endPage") val endPage: Int = 20,
+    @SerializedName("plannedDurationMinutes") val plannedDurationMinutes: Int = 45,
+    @SerializedName("scheduledEpochMillis") val scheduledEpochMillis: Long = 0L,
+    @SerializedName("reminderMinutesBefore") val reminderMinutesBefore: Int = 15, // -1 = disabled
+    @SerializedName("snoozedUntilEpochMillis") val snoozedUntilEpochMillis: Long? = null,
+    @SerializedName("microNote") val microNote: String = "",
     @SerializedName("isCompleted") val isCompleted: Boolean = false,
     @SerializedName("completedEpochMillis") val completedEpochMillis: Long? = null,
     @SerializedName("actualPagesRead") val actualPagesRead: Int = 0,
-    @SerializedName("isOverdueRollover") val isOverdueRollover: Boolean = false,
-    @SerializedName("originalScheduledEpochMillis") val originalScheduledEpochMillis: Long? = null
+    @SerializedName("actualDurationMinutes") val actualDurationMinutes: Int = 0
 ) {
-    val totalPages: Int get() = (endPage - startPage + 1).coerceAtLeast(1)
-    val estimatedMinutes: Int get() = totalPages * 2 // 2 min/page standard estimate
-    val alarmRequestCode: Int get() = id.hashCode()
+    val totalPages: Int
+        get() = (endPage - startPage + 1).coerceAtLeast(1)
 
-    val progressFraction: Float
-        get() {
-            if (isCompleted) return 1f
-            if (endPage <= startPage) return 0f
-            val current = currentPageReached.coerceIn(startPage, endPage)
-            return ((current - startPage).toFloat() / (endPage - startPage).toFloat()).coerceIn(0f, 1f)
-        }
-
-    val progressPercent: Int
-        get() = (progressFraction * 100f).toInt().coerceIn(0, 100)
+    val alarmRequestCode: Int
+        get() = id.hashCode()
 
     val targetAlarmEpochMillis: Long?
-        get() = if (reminderMinutesBefore >= 0 && scheduledEpochMillis > 0L) {
-            scheduledEpochMillis - (reminderMinutesBefore * 60 * 1000L)
-        } else null
+        get() {
+            if (isCompleted) return null
+            // Priority 1: If explicitly snoozed, fire at snoozed timestamp
+            if (snoozedUntilEpochMillis != null) return snoozedUntilEpochMillis
+            // Priority 2: Standard pre-session reminder
+            if (reminderMinutesBefore < 0) return null
+            return scheduledEpochMillis - (reminderMinutesBefore * 60_000L)
+        }
+
+    // Backwards compatibility helpers
+    val estimatedMinutes: Int
+        get() = if (plannedDurationMinutes > 0) plannedDurationMinutes else totalPages * 2
+
+    val bookFileName: String
+        get() = if (bookSlug.isNotBlank()) "$bookSlug.bin" else ""
+
+    val vaultPath: String
+        get() = "/sdcard/Mulberry"
+
+    val bookRelativePath: String
+        get() = if (bookSlug.isNotBlank()) "$bookSlug.bin" else ""
 }
 
-/**
- * Historical schedule ledger entry stored at /sdcard/Mulberry/.schedule/schedule_history.json
- */
 @Keep
-data class ScheduleHistoryEntry(
-    @SerializedName("id") val id: String = UUID.randomUUID().toString(),
-    @SerializedName("sessionId") val sessionId: String = "",
-    @SerializedName("bookTitle") val bookTitle: String = "",
-    @SerializedName("bookFileName") val bookFileName: String = "",
-    @SerializedName("startPage") val startPage: Int = 1,
-    @SerializedName("endPage") val endPage: Int = 1,
-    @SerializedName("pagesRead") val pagesRead: Int = 0,
-    @SerializedName("scheduledEpochMillis") val scheduledEpochMillis: Long = 0L,
-    @SerializedName("completedEpochMillis") val completedEpochMillis: Long? = null,
-    @SerializedName("isCompleted") val isCompleted: Boolean = false,
-    @SerializedName("wasRolledOver") val wasRolledOver: Boolean = false,
-    @SerializedName("action") val action: String = "COMPLETED", // CREATED, EDITED, COMPLETED, ROLLED_OVER
-    @SerializedName("recordedAt") val recordedAt: Long = System.currentTimeMillis(),
-    @SerializedName("note") val note: String = ""
+data class ReadingHistoryIndex(
+    @SerializedName("version") val version: Int = 2,
+    @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
+    @SerializedName("books") val books: List<BookReadingState> = emptyList(),
+    @SerializedName("logs") val logs: List<ReadingActivityLog> = emptyList()
 )
 
 @Keep
-data class ScheduleHistoryVault(
-    @SerializedName("version") val version: Int = 1,
-    @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
-    @SerializedName("history") val history: List<ScheduleHistoryEntry> = emptyList()
+data class BookReadingState(
+    @SerializedName("bookSlug") val bookSlug: String,
+    @SerializedName("bookTitle") val bookTitle: String = "",
+    @SerializedName("subject") val subject: String = "",
+    @SerializedName("lastReadPage") val lastReadPage: Int = 1,
+    @SerializedName("totalPages") val totalPages: Int = 1,
+    @SerializedName("progressPercent") val progressPercent: Int = 0,
+    @SerializedName("lastReadEpochMillis") val lastReadEpochMillis: Long = System.currentTimeMillis(),
+    @SerializedName("totalTimeSeconds") val totalTimeSeconds: Long = 0L
+)
+
+@Keep
+data class ReadingActivityLog(
+    @SerializedName("logId") val logId: String = UUID.randomUUID().toString(),
+    @SerializedName("sessionId") val sessionId: String? = null,
+    @SerializedName("bookSlug") val bookSlug: String,
+    @SerializedName("bookTitle") val bookTitle: String = "",
+    @SerializedName("startedAtEpochMillis") val startedAtEpochMillis: Long = System.currentTimeMillis(),
+    @SerializedName("endedAtEpochMillis") val endedAtEpochMillis: Long = System.currentTimeMillis(),
+    @SerializedName("durationSeconds") val durationSeconds: Long = 0L,
+    @SerializedName("startPage") val startPage: Int = 1,
+    @SerializedName("endPage") val endPage: Int = 1,
+    @SerializedName("pagesVisitedCount") val pagesVisitedCount: Int = 1
 )

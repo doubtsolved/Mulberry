@@ -73,14 +73,17 @@ fun HeroReadingSessionCard(
 
     var showContextMenu by remember { mutableStateOf(false) }
 
-    // Multi-tier File Existence Verification (Direct relative path, root path, or absolute path)
-    val fileExists = remember(session.vaultPath, session.bookFileName, session.bookRelativePath) {
+    // Multi-tier File Existence Verification (Encrypted .bin via bookSlug, direct relative path, root path, or absolute path)
+    val fileExists = remember(session.bookSlug, session.vaultPath, session.bookFileName, session.bookRelativePath) {
+        val binExists = if (session.bookSlug.isNotBlank()) {
+            File("/sdcard/Mulberry/${session.bookSlug}.bin").exists()
+        } else false
         val direct = if (session.bookRelativePath.isNotBlank()) {
             File(session.vaultPath, session.bookRelativePath).exists()
         } else false
         val root = File(session.vaultPath, session.bookFileName).exists()
         val absolute = if (session.bookFileName.startsWith("/")) File(session.bookFileName).exists() else false
-        direct || root || absolute
+        binExists || direct || root || absolute
     }
 
     // Auto-resolve missing file in background if moved

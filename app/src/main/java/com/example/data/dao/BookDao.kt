@@ -82,5 +82,8 @@ interface BookDao {
 
     @Query("UPDATE books SET isDownloaded = :isDownloaded, binFilePath = :binFilePath, fileSizeBytes = :fileSizeBytes WHERE slug = :slug")
     suspend fun updateDownloadStateBySlug(slug: String, isDownloaded: Boolean, binFilePath: String, fileSizeBytes: Long)
+
+    @Query("UPDATE books SET lastReadPage = :page, progressPercent = :percent, lastReadTimestamp = :timestamp WHERE slug = :slug")
+    suspend fun updateReadingProgressBySlug(slug: String, page: Int, percent: Int, timestamp: Long = System.currentTimeMillis())
 }
 
