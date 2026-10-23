@@ -140,7 +140,8 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 420)
 
     val weeklyCompletedPages: StateFlow<Int> = scheduleState.map { file ->
-        scheduleRepo.getWeeklyCompletedPages(file.sessions)
+        val weekKey = scheduleRepo.getCurrentWeekKey()
+        scheduleRepo.getWeeklyCompletedPages(file.sessions, file.extraWeeklyPages[weekKey] ?: 0)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val weeklyCompletedMinutes: StateFlow<Int> = scheduleState.map { file ->

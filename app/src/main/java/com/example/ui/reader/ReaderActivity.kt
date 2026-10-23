@@ -1,18 +1,22 @@
 package com.example.ui.reader
 
 import android.app.Activity
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.core.app.ActivityOptionsCompat
 import com.example.R
 import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.example.data.repository.UserProfileRepository
+import com.example.ui.screens.desk.AddToDeskBottomSheet
 import com.mulberry.app.analytics.MulberryAnalytics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -37,10 +41,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.example.util.toCleanBookTitle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -67,8 +73,9 @@ import com.example.ui.theme.PoppinsFamily
 import com.example.ui.theme.ThemeMode
 import android.graphics.pdf.PdfRenderer
 import android.util.Log
-import com.shockwave.pdfium.PdfDocument
-import com.shockwave.pdfium.PdfiumCore
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -155,6 +162,7 @@ class ReaderActivity : AppCompatActivity() {
     private var resumeTimestamp: Long = 0L
     private var accumulatedActiveSeconds: Long = 0L
     private val visitedPages = mutableSetOf<Int>()
+    private var recordedExtraPagesCount: Int = 0
     private var initialOpenedPage: Int = 1
     private var hasLoggedSessionCompleted: Boolean = false
 
@@ -181,6 +189,13 @@ class ReaderActivity : AppCompatActivity() {
 
     private var thumbnailManager: PdfThumbnailManager? = null
     private var searchManager: PdfTextSearchManager? = null
+
+    // External PDF States
+    private val isExternalPdfState = mutableStateOf(false)
+    private val isAlreadyInDeskState = mutableStateOf(false)
+    private val showAddToDeskBannerState = mutableStateOf(false)
+    private val showAddToDeskSheetState = mutableStateOf(false)
+    private var externalPdfFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -212,6 +227,11 @@ class ReaderActivity : AppCompatActivity() {
         sessionStartPage = intent.getIntExtra(EXTRA_START_PAGE, -1)
         sessionEndPage = intent.getIntExtra(EXTRA_END_PAGE, -1)
 
+        val incomingUri = intent?.data
+        if (incomingUri != null && (intent.action == Intent.ACTION_VIEW || bookPath.isEmpty())) {
+            handleExternalPdfUri(incomingUri)
+        }
+
         if (sessionStartPage > 0) {
             val startIdx = (sessionStartPage - 1).coerceAtLeast(0)
             currentSinglePage.intValue = startIdx
@@ -238,6 +258,54 @@ class ReaderActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumeTimestamp = System.currentTimeMillis()
+    }
+
+    private fun handleExternalPdfUri(uri: Uri) {
+        try {
+            var displayName = "External Document.pdf"
+
+            if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && nameIndex != -1) {
+                        cursor.getString(nameIndex)?.let { displayName = it }
+                    }
+                }
+            } else if (uri.scheme == "file") {
+                uri.lastPathSegment?.let { displayName = it }
+            }
+
+            val sanitizedName = displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifEmpty { "external_preview.pdf" }
+            val previewDir = File(cacheDir, "external_preview").apply { mkdirs() }
+            val tempFile = File(previewDir, sanitizedName)
+
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output, bufferSize = 8192)
+                }
+            } ?: run {
+                Log.w("ReaderActivity", "Could not open stream for external URI: $uri")
+            }
+
+            if (tempFile.exists() && tempFile.length() > 0) {
+                externalPdfFile = tempFile
+                bookPath = tempFile.absolutePath
+                if (bookTitle.isEmpty()) {
+                    bookTitle = displayName.toCleanBookTitle()
+                }
+                isExternalPdfState.value = true
+
+                val alreadyInDesk = com.example.util.MulberryStorageManager.isBookInMulberry(
+                    context = applicationContext,
+                    fileName = tempFile.name,
+                    fileSizeBytes = tempFile.length()
+                )
+                isAlreadyInDeskState.value = alreadyInDesk
+                showAddToDeskBannerState.value = !alreadyInDesk
+            }
+        } catch (e: Exception) {
+            Log.e("ReaderActivity", "Failed to handle external PDF URI: ${e.message}", e)
+        }
     }
 
     private fun startAsyncPreparation() {
@@ -431,6 +499,7 @@ class ReaderActivity : AppCompatActivity() {
                     readerLoadState.value = ReaderLoadState.Ready
                     sessionStartTimeMs = System.currentTimeMillis()
                     initialOpenedPage = currentSinglePage.intValue + 1
+                    visitedPages.add(initialOpenedPage)
                     MulberryAnalytics.logBookOpened(
                         bookId = if (bookId != -1) bookId.toString() else (bookTitle.ifEmpty { "unknown_book" }),
                         bookTitle = bookTitle.ifEmpty { "Medical Textbook" },
@@ -505,6 +574,9 @@ class ReaderActivity : AppCompatActivity() {
                                 onFeedback = {
                                     sendFeedbackEmail()
                                 },
+                                onAddToDesk = if (isExternalPdfState.value && !isAlreadyInDeskState.value) {
+                                    { showAddToDeskSheetState.value = true }
+                                } else null,
                                 onMatchesChanged = { matches, currentIdx ->
                                     searchMatchesState.value = matches
                                     activeSearchMatchIndexState.intValue = currentIdx
@@ -517,6 +589,7 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     private fun setupSinglePageView() {
         val singlePageComposeView = findViewById<ComposeView>(R.id.single_page_compose_view)
         singlePageComposeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -652,26 +725,69 @@ class ReaderActivity : AppCompatActivity() {
                         val docFile = if (!targetPath.startsWith("content://")) File(targetPath).takeIf { it.exists() } else null
                         val docUri = if (targetPath.startsWith("content://")) Uri.parse(targetPath) else null
 
-                        SinglePagePdfViewer(
-                            pdfFile = docFile,
-                            pdfUri = docUri,
-                            initialPage = currentSinglePage.intValue,
-                            totalPages = totalPagesState.intValue,
-                            targetPageJump = singlePageTargetJump.intValue,
-                            searchMatches = searchMatchesState.value,
-                            activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
-                            onPageChanged = { pageIndex ->
-                                currentSinglePage.intValue = pageIndex
-                                val pageNum = pageIndex + 1
-                                visitedPages.add(pageNum)
-                                maxPageReached = maxOf(maxPageReached, pageNum)
-                            },
-                            themeMode = activeTheme,
-                            onToggleControls = { visible ->
-                                toggleReaderControls(visible)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            SinglePagePdfViewer(
+                                pdfFile = docFile,
+                                pdfUri = docUri,
+                                initialPage = currentSinglePage.intValue,
+                                totalPages = totalPagesState.intValue,
+                                targetPageJump = singlePageTargetJump.intValue,
+                                searchMatches = searchMatchesState.value,
+                                activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
+                                onPageChanged = { pageIndex ->
+                                    currentSinglePage.intValue = pageIndex
+                                    val pageNum = pageIndex + 1
+                                    visitedPages.add(pageNum)
+                                    maxPageReached = maxOf(maxPageReached, pageNum)
+                                },
+                                themeMode = activeTheme,
+                                onToggleControls = { visible ->
+                                    toggleReaderControls(visible)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            // Floating pill card positioned right above the bottom scrubber bar
+                            if (showAddToDeskBannerState.value && externalPdfFile != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = if (showControlsState.value) 96.dp else 24.dp)
+                                ) {
+                                    ExternalPdfFloatingBanner(
+                                        title = bookTitle,
+                                        onAddToDeskClick = {
+                                            showAddToDeskSheetState.value = true
+                                        },
+                                        onDismiss = {
+                                            showAddToDeskBannerState.value = false
+                                        }
+                                    )
+                                }
+                            }
+
+                            // Add to Desk Bottom Sheet
+                            if (showAddToDeskSheetState.value && externalPdfFile != null) {
+                                val userProfile = androidx.compose.runtime.remember {
+                                    UserProfileRepository.getInstance(applicationContext).userProfile.value
+                                }
+                                AddToDeskBottomSheet(
+                                    tempPdfFile = externalPdfFile!!,
+                                    initialFileName = externalPdfFile!!.name,
+                                    totalPages = totalPagesState.intValue,
+                                    userProfile = userProfile,
+                                    onDismissRequest = {
+                                        showAddToDeskSheetState.value = false
+                                    },
+                                    onAddedToDesk = { slug, title ->
+                                        showAddToDeskSheetState.value = false
+                                        showAddToDeskBannerState.value = false
+                                        isAlreadyInDeskState.value = true
+                                        Toast.makeText(this@ReaderActivity, "Added '$title' to Desk!", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -699,44 +815,32 @@ class ReaderActivity : AppCompatActivity() {
 
     private suspend fun extractPdfMetadataAndTocSafely() {
         val targetPath = activeRenderingPath.ifEmpty { bookPath }
-        withTimeoutOrNull(4000L) {
+        withTimeoutOrNull(5000L) {
+            var pdDoc: PDDocument? = null
             try {
-                val pfd: ParcelFileDescriptor? = if (targetPath.startsWith("content://")) {
-                    contentResolver.openFileDescriptor(Uri.parse(targetPath), "r")
-                } else {
-                    val file = File(targetPath)
-                    if (file.exists()) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) else null
+                PdfTextSearchManager.initPdfBox(applicationContext)
+                pdDoc = withContext(Dispatchers.IO) {
+                    if (targetPath.startsWith("content://")) {
+                        contentResolver.openInputStream(Uri.parse(targetPath))?.use { inputStream ->
+                            PDDocument.load(inputStream)
+                        }
+                    } else {
+                        val file = File(targetPath)
+                        if (file.exists()) PDDocument.load(file) else null
+                    }
                 }
 
-                if (pfd != null) {
-                    var pdfiumCore: PdfiumCore? = null
-                    var pdfDoc: PdfDocument? = null
-                    try {
-                        pdfiumCore = PdfiumCore(applicationContext)
-                        pdfDoc = pdfiumCore.newDocument(pfd)
-
-                        // Extract Table of Contents
-                        val bookmarks = pdfiumCore.getTableOfContents(pdfDoc)
+                if (pdDoc != null) {
+                    val outline: PDDocumentOutline? = pdDoc.documentCatalog?.documentOutline
+                    val parsed = if (outline != null) {
                         val visited = mutableSetOf<String>()
-                        val parsed = parseBookmarksRecursively(bookmarks, visited, 0)
-                        withContext(Dispatchers.Main) {
-                            tocItemsState.value = parsed
-                            isTocLoadingState.value = false
-                        }
-                    } catch (t: Throwable) {
-                        Log.w("ReaderActivity", "TOC extraction non-fatal warning: ${t.message}")
-                        withContext(Dispatchers.Main) {
-                            isTocLoadingState.value = false
-                        }
-                    } finally {
-                        try {
-                            if (pdfDoc != null && pdfiumCore != null) {
-                                pdfiumCore.closeDocument(pdfDoc)
-                            }
-                        } catch (_: Throwable) {}
-                        try {
-                            pfd.close()
-                        } catch (_: Throwable) {}
+                        parseBookmarksRecursively(pdDoc, outline.children(), visited, 0)
+                    } else {
+                        emptyList()
+                    }
+                    withContext(Dispatchers.Main) {
+                        tocItemsState.value = parsed
+                        isTocLoadingState.value = false
                     }
                 } else {
                     withContext(Dispatchers.Main) {
@@ -744,10 +848,14 @@ class ReaderActivity : AppCompatActivity() {
                     }
                 }
             } catch (t: Throwable) {
-                Log.w("ReaderActivity", "Background TOC load failed: ${t.message}")
+                Log.w("ReaderActivity", "TOC extraction non-fatal warning: ${t.message}")
                 withContext(Dispatchers.Main) {
                     isTocLoadingState.value = false
                 }
+            } finally {
+                try {
+                    pdDoc?.close()
+                } catch (_: Throwable) {}
             }
         } ?: run {
             Log.w("ReaderActivity", "TOC extraction timed out; proceeding without bookmarks")
@@ -758,27 +866,42 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private fun parseBookmarksRecursively(
-        list: List<PdfDocument.Bookmark>?,
+        doc: PDDocument,
+        items: Iterable<PDOutlineItem>?,
         visited: MutableSet<String>,
         depth: Int
     ): List<TocItem> {
-        if (list.isNullOrEmpty() || depth > 8) return emptyList()
-        return list.mapNotNull { b ->
-            val title = b.title?.takeIf { it.isNotBlank() } ?: "Section"
-            val key = "${b.pageIdx}_$title"
-            if (!visited.add(key)) return@mapNotNull null
+        if (items == null || depth > 8) return emptyList()
+        val result = mutableListOf<TocItem>()
+        for (item in items) {
+            val title = item.title?.takeIf { it.isNotBlank() } ?: "Section"
+            val destinationPage = try {
+                item.findDestinationPage(doc)
+            } catch (_: Throwable) {
+                null
+            }
+            val pageIdx = if (destinationPage != null) {
+                doc.pages.indexOf(destinationPage).coerceAtLeast(0).toLong()
+            } else {
+                0L
+            }
+            val key = "${pageIdx}_$title"
+            if (!visited.add(key)) continue
 
-            val children = if (b.hasChildren() && b.children != null) {
-                parseBookmarksRecursively(b.children, visited, depth + 1)
+            val children = if (item.hasChildren()) {
+                parseBookmarksRecursively(doc, item.children(), visited, depth + 1)
             } else {
                 emptyList()
             }
-            TocItem(
-                title = title,
-                pageIdx = b.pageIdx,
-                children = children
+            result.add(
+                TocItem(
+                    title = title,
+                    pageIdx = pageIdx,
+                    children = children
+                )
             )
         }
+        return result
     }
 
     private fun getDocumentUri(): Uri? {
@@ -917,32 +1040,46 @@ class ReaderActivity : AppCompatActivity() {
                     )
                 }
 
-                // Handle study session progress: strictly complete only if max target page is reached
+                // Handle study session progress and weekly progress tracking
                 val currentSessionId = sessionId
-                if (!currentSessionId.isNullOrBlank()) {
-                    val pagesVisited = if (sessionStartPage > 0) {
-                        (maxPageReached - sessionStartPage + 1).coerceAtLeast(1)
-                    } else {
-                        visitedPages.size.coerceAtLeast(1)
-                    }
-                    val activeMinutes = (accumulatedActiveSeconds / 60).toInt().coerceAtLeast(1)
-                    val isTargetReached = (sessionEndPage > 0 && maxPageReached >= sessionEndPage)
+                val activeMinutes = (accumulatedActiveSeconds / 60).toInt().coerceAtLeast(1)
 
-                    if (isTargetReached) {
+                val scheduledPagesCount: Int
+                val outsidePagesCount: Int
+
+                if (!currentSessionId.isNullOrBlank() && sessionStartPage > 0 && sessionEndPage >= sessionStartPage) {
+                    val scheduledRange = sessionStartPage..sessionEndPage
+                    val scheduledVisited = visitedPages.filter { it in scheduledRange }.toSet()
+                    scheduledPagesCount = scheduledVisited.size
+                    outsidePagesCount = visitedPages.count { it !in scheduledRange }
+                    val isAllScheduledPagesVisited = scheduledRange.all { it in visitedPages }
+
+                    if (isAllScheduledPagesVisited) {
                         com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
                             .markCompleted(
                                 sessionId = currentSessionId,
-                                actualReadPages = pagesVisited,
+                                actualReadPages = scheduledPagesCount,
                                 actualDurationMinutes = activeMinutes
                             )
                     } else {
                         com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
                             .updateIncrementalSessionProgress(
                                 sessionId = currentSessionId,
-                                actualReadPages = pagesVisited,
+                                actualReadPages = scheduledPagesCount,
                                 actualDurationMinutes = activeMinutes
                             )
                     }
+                } else {
+                    scheduledPagesCount = 0
+                    outsidePagesCount = visitedPages.size
+                }
+
+                // Credit any pages read outside the scheduled session (or non-session free reading) to weekly progress
+                val incrementalOutside = (outsidePagesCount - recordedExtraPagesCount).coerceAtLeast(0)
+                if (incrementalOutside > 0) {
+                    com.example.data.schedule.ScheduleRepository.getInstance(applicationContext)
+                        .recordExtraPagesRead(incrementalOutside)
+                    recordedExtraPagesCount = outsidePagesCount
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -964,7 +1101,7 @@ class ReaderActivity : AppCompatActivity() {
         if (hasLoggedSessionCompleted || sessionStartTimeMs <= 0L) return
         hasLoggedSessionCompleted = true
         val durationSeconds = ((System.currentTimeMillis() - sessionStartTimeMs) / 1000).coerceAtLeast(0)
-        val pagesRead = (maxPageReached - initialOpenedPage + 1).coerceAtLeast(1)
+        val pagesRead = visitedPages.size.coerceAtLeast(1)
         MulberryAnalytics.logBookSessionCompleted(
             bookId = if (bookId != -1) bookId.toString() else (bookTitle.ifEmpty { "unknown_book" }),
             durationSeconds = durationSeconds,

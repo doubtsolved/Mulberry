@@ -1,72 +1,152 @@
-# Implementation Plan - Schedule Completion Threshold, In-Progress Bar & Header Typography
+# External PDF Ingestion, VIP Contributor Code & Community Contributions
 
-Ensure reading schedule sessions are marked completed **only** when the user reads to or beyond the maximum scheduled end page, dynamically preserve and display partial reading progress on session cards, and increase the heading typography for "TODAY'S FOCUS" and "Shelf" to a prominent 20sp bold title style.
-
----
-
-## 1. Confirmed User Requirements & Design Choices
-
-| Requirement | Specification | Implementation Detail |
-| :--- | :--- | :--- |
-| **Schedule Completion Threshold** | Mark complete **only** when reading reaches or exceeds scheduled `endPage` (`maxPageReached >= sessionEndPage`). | In `ReaderActivity.kt`, remove `|| isFinishing` from completion check. Closing/exiting before reaching `sessionEndPage` saves partial progress via `updateIncrementalSessionProgress` without flagging `isCompleted = true`. |
-| **In-Progress Reading Indicator** | Dynamically fill the progress bar on `TodayFocusSessionCard` as reading proceeds. | Replace hardcoded `0.35f` progress with `(actualPagesRead.toFloat() / totalPages.toFloat()).coerceIn(0f, 1f)`. Display read page count (e.g., `"5 / 20 pages"`) below the bar. |
-| **Heading Font Size** | Increase "TODAY'S FOCUS" and "Shelf" heading font size to prominent 20sp bold. | Update `SectionHeader` in `DeskRootScreen.kt` with `fontSize = 20.sp`, `fontWeight = FontWeight.Bold`, `color = colors.textPrimary`, `letterSpacing = (-0.3).sp`, and proportional icon sizing. |
+Enable Mulberry to act as a system PDF viewer with in-reader "Add to Desk" local encryption, add VIP student contributor verification via Cloudflare Worker, and support reliable background uploads of textbooks to the community library via direct Hugging Face LFS S3 uploads with Android WorkManager.
 
 ---
 
-## 2. Proposed Changes
+### User Review & Critical Decisions
 
-### A. Reading Session Completion & Progress Tracking (`ReaderActivity.kt`)
-* **File**: `app/src/main/java/com/example/ui/reader/ReaderActivity.kt`
-* **Changes**:
-  1. In `saveReadingProgress()` (around line 927):
-     * Change completion condition from `if (isTargetReached || isFinishing)` to strictly `if (isTargetReached)`.
-     * `isTargetReached` evaluates `(sessionEndPage > 0 && maxPageReached >= sessionEndPage)`.
-     * If `isTargetReached == false` when exiting or pausing: invoke `ScheduleRepository.updateIncrementalSessionProgress(sessionId, actualReadPages = pagesVisited, actualDurationMinutes = activeMinutes)`.
-     * If `isTargetReached == true`: invoke `ScheduleRepository.markCompleted(sessionId, actualReadPages = pagesVisited, actualDurationMinutes = activeMinutes)`.
-  2. Compute `pagesVisited` accurately relative to `sessionStartPage`:
-     * `val pagesVisited = if (sessionStartPage > 0) (maxPageReached - sessionStartPage + 1).coerceAtLeast(1) else visitedPages.size.coerceAtLeast(1)`
+> [!IMPORTANT]
+> The following architectural decisions were confirmed during the interactive clarification phase:
+
+- **Confirmed Decision 1 (Upload Execution Model)**: Community textbook contributions will be scheduled and executed via **Android WorkManager** (`CoroutineWorker`) with a persistent progress notification (`ForegroundInfo`), ensuring uploads safely complete even if the user minimizes or closes Mulberry.
+- **Confirmed Decision 2 (VIP Contributor Badge Placement)**: The verified VIP Contributor Badge (e.g. *Core Architect*, *Verified Contributor*, or *Scholar*) will be rendered **beside the student's name in the Desk header**.
 
 ---
 
-### B. Desk Session Card In-Progress Visualizer (`DeskRootScreen.kt`)
-* **File**: `app/src/main/java/com/example/ui/screens/desk/DeskRootScreen.kt`
-* **Changes**:
-  1. In `TodayFocusSessionCard` (lines 1066-1089):
-     * Compute actual progress fraction:
-       ```kotlin
-       val readProgress = if (isCompleted) 1f else {
-           (session.actualPagesRead.toFloat() / session.totalPages.toFloat()).coerceIn(0f, 1f)
-       }
-       ```
-     * In the status row below the progress bar:
-       * When completed: `"Completed"` (in `colors.primary`)
-       * When in-progress with pages read: `"${session.actualPagesRead}/${session.totalPages} pages"` (in `colors.textSecondary`)
-       * When not yet started: `"0/${session.totalPages} pages"` or `"Not started"`
+### 1. Overview & Core Concept
+
+- **What It Does**:
+  1. **External PDF Handling & Ingestion**: Opens any external PDF from files, WhatsApp, or browsers, previews it instantly in `ReaderActivity`, and displays a non-intrusive floating pill card `[External PDF] <Title> • [+ Add to Desk]`. When tapped, it displays a metadata modal, creates an AES-256-GCM encrypted replica in `/sdcard/Mulberry/<slug>.bin`, generates a 150 DPI WebP cover, writes to `/sdcard/Mulberry/downloaded_external.json`, and registers it in Room `BookDao` so it appears in the Desk Shelf.
+  2. **VIP Contributor Code Verification**: Adds an expandable access code panel in the Student Profile. Validates codes via `POST https://mulberry-vault.sahabulmondal2023.workers.dev/api/verify-code` and grants tier privileges (`CORE_VIP`, `AMBASSADOR`, `STANDARD`) with dynamic daily upload limits and a custom badge.
+  3. **Community Contribution Pipeline**: Automatically computes SHA-256 and file size, checks rate limits via the Cloudflare Worker `/api/contribute/init`, streams large encrypted `.bin` files directly to Hugging Face LFS AWS S3 using presigned upload URLs with an 8 KB buffer, and commits metadata via `/api/contribute/finalize`.
+
+- **Target Audience**: Medical students importing uncataloged lecture notes, college handouts, or rare regional medical textbooks into Mulberry for offline study and sharing them with peers.
 
 ---
 
-### C. Prominent Section Headers (`DeskRootScreen.kt`)
-* **File**: `app/src/main/java/com/example/ui/screens/desk/DeskRootScreen.kt`
-* **Changes**:
-  1. In `SectionHeader` (lines 1512-1555):
-     * Increase title `fontSize` from `12.sp` to `20.sp`.
-     * Update title `fontWeight` to `FontWeight.Bold` and `color` to `colors.textPrimary` (for high visual hierarchy).
-     * Adjust title `letterSpacing` to `(-0.3).sp` suitable for modern title typography.
-     * Scale accompanying icon (e.g. for Shelf) from `16.dp` to `20.dp` to align with the larger title text.
-     * Ensure vertical padding and alignment remain balanced on both mobile and tablet viewport widths.
+### 2. User Experience & Visual Design
+
+#### A. External PDF Viewport & Floating "Add to Desk" Banner
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Reader Top Bar:  [< Back]   External Document        [⋮]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                    [ PDF Page Viewport ]                    │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ 📄 External PDF • BD Chaurasia Anatomy  [+ Add to Desk]│  │
+│  └───────────────────────────────────────────────────────┘  │
+│  [==================== Scrubber Slider ====================]│
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### B. "Add to Desk" Bottom Sheet
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Add to Desk                                             [X] │
+│                                                             │
+│ Book Title                                                  │
+│ [ BD Chaurasia Human Anatomy                              ] │
+│                                                             │
+│ Professional Year                Subject                    │
+│ [ 1st Prof                   ▼]  [ Anatomy               ▼] │
+│                                                             │
+│ Asset Type                                                  │
+│ [ Standard Textbook                                       ▼]│
+│                                                             │
+│ [✓] Contribute to Mulberry Community Library                │
+│     Shares encrypted copy with verified medical peers       │
+│                                                             │
+│ [                  Import & Add to Desk                   ] │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### C. Desk Header with VIP Contributor Badge
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [M] Desk                                              ( S ) │
+│ Dr. Sahabul  [ ★ Core Architect ]                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### D. Profile VIP Access Code Section
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Special Contributor Access Code                             │
+│ Enter access code from community coordinators               │
+│ [ CORE-ARCHITECT-2026                      ] [ Verify Code ]│
+│ ✓ Verified: Core Architect (Unlimited Uploads)              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 3. Verification & Testing
+### 3. Key Product Decisions & Trade-Offs
 
-1. **Compilation Check**: Run `compile_applet` to confirm clean compilation with no syntax or type mismatches.
-2. **Session Partial Progress Verification**:
-   - Create/open a scheduled session (e.g., pages 1–20).
-   - Read pages 1 to 5 and exit via back navigation (`isFinishing`).
-   - Verify in `DeskRootScreen` that the session remains uncompleted, the progress bar shows 25% (5/20 pages), and sub-label shows `"5/20 pages"`.
-3. **Session Completion Verification**:
-   - Reopen the session, navigate to or past page 20 (`maxPageReached >= 20`).
-   - Exit the reader; verify session is marked complete (`isCompleted = true`), checkmark displays, and progress bar shows 100%.
-4. **Header Visual Inspection**:
-   - Verify both "TODAY'S FOCUS" and "Shelf" headers render at 20sp bold with crisp typography and matching icon heights.
+- **Decision 1: WorkManager vs. In-Activity Coroutines for Uploads**:
+  - *Chosen Approach*: `androidx.work.CoroutineWorker` with `setForeground()` notification.
+  - *Why*: Large medical textbooks often range from 50 MB to 350 MB. Foreground activity coroutines risk termination when the system reclaims memory or the student switches apps. WorkManager guarantees execution and battery-aware retries.
+- **Decision 2: Direct-to-S3 Presigned Streaming vs. Worker Proxying**:
+  - *Chosen Approach*: Request presigned URL from Cloudflare Worker, then stream `.bin` straight from disk to AWS S3 using 8 KB buffer chunks with OkHttp `RequestBody`.
+  - *Why*: Cloudflare Workers have a 100 MB request payload limit and memory constraints. Direct S3 uploads bypass intermediate proxies and achieve maximum bandwidth.
+- **Decision 3: Dual Indexing (Room + `downloaded_external.json`)**:
+  - *Chosen Approach*: Store metadata in atomic JSON `/sdcard/Mulberry/downloaded_external.json` AND upsert into Room `BookEntity`.
+  - *Why*: Ensures data survives app re-installations while keeping Room as the fast, reactive single source of truth for the Compose UI.
+
+---
+
+### 4. Technical Architecture & Data Strategy
+
+#### System Architecture & Data Flow
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                             ReaderActivity                              │
+│                                                                         │
+│  Intent.ACTION_VIEW (PDF) ──► Copy to external_preview/<sanitized>.pdf   │
+│  Check if cataloged / downloaded ──► Show AddToDesk Floating Banner     │
+└───────────────┬─────────────────────────────────────────────────────────┘
+                │ User clicks "+ Add to Desk"
+                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          AddToDeskBottomSheet                           │
+│                                                                         │
+│  1. Compute clean slug: title.toCleanBookTitle().slugify()              │
+│  2. Encrypt: VaultCryptoManager.encryptFileToVault() ──► <slug>.bin     │
+│  3. Render Cover: Page 0 @ 150 DPI ──► .covers/<slug>.webp              │
+│  4. Index: SafeFileWriter.writeAtomically() ──► downloaded_external.json│
+│  5. Room Upsert: BookDao.upsertBook(isDownloaded = true, binFilePath)   │
+└───────────────┬─────────────────────────────────────────────────────────┘
+                │ If "Contribute" checked
+                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         BookContributionManager                         │
+│                                                                         │
+│  Enqueues WorkManager: BookContributionWorker                           │
+│  1. POST /api/contribute/init (with X-Device-Id, X-Vip-Code)            │
+│  2. Direct S3 PUT streaming encrypted .bin (8 KB buffer)                │
+│  3. POST /api/contribute/finalize (with Base64 cover + metadata)        │
+│  4. Update contributedStatus = "PENDING" in downloaded_external.json    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Files to Create / Modify:
+1. **`app/build.gradle.kts`**:
+   - Add WorkManager dependency: `implementation("androidx.work:work-runtime-ktx:2.10.0")`.
+2. **`AndroidManifest.xml`**:
+   - Register `ACTION_VIEW` intent filter for `ReaderActivity` (`application/pdf`, schemes `content` and `file`, `exported=true`).
+3. **`ReaderActivity.kt`**:
+   - Handle incoming PDF URI from `intent.data`, resolve filename via `OpenableColumns`, cache to `external_preview`, check duplicate state.
+   - Render floating `AddToDeskBanner` and overflow menu item `Add to Desk`.
+4. **`AddToDeskBottomSheet.kt` (New)**:
+   - Compose sheet with Title, Prof, Subject, Asset Type, and Contribute checkbox.
+   - Background encryption, WebP cover generator, `downloaded_external.json` updater, and Room insertion.
+5. **`UserProfile.kt` & `UserProfileRepository.kt`**:
+   - Add VIP capability fields (`vipCode`, `vipTier`, `vipBadgeLabel`, `dailyUploadLimit`).
+   - Persist to preferences, `.profile`, and active vault.
+6. **`UserProfileBottomSheet.kt` & `DeskRootScreen.kt`**:
+   - Expandable "Special Contributor Access Code" card in profile with verify button and worker verification.
+   - Render `VipBadge` beside student's name in `DeskTopAppBar`.
+7. **`BookContributionManager.kt` & `BookContributionWorker.kt` (New)**:
+   - WorkManager integration for LFS S3 uploads with progress notifications and error handling.

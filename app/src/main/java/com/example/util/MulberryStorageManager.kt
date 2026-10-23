@@ -51,6 +51,33 @@ data class DownloadedBooksIndex(
 )
 
 /**
+ * Metadata record stored in /sdcard/Mulberry/downloaded_external.json
+ */
+data class ExternalBookMetadata(
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("author") val author: String = "Local Import",
+    @SerializedName("prof") val prof: String = "1st Prof",
+    @SerializedName("subject") val subject: String = "Anatomy",
+    @SerializedName("type") val type: String = "Standard Textbook",
+    @SerializedName("totalPages") val totalPages: Int = 0,
+    @SerializedName("sizeMb") val sizeMb: Double = 0.0,
+    @SerializedName("localPath") val localPath: String,
+    @SerializedName("coverUrl") val coverUrl: String,
+    @SerializedName("isExternal") val isExternal: Boolean = true,
+    @SerializedName("contributedStatus") val contributedStatus: String = "NONE"
+)
+
+/**
+ * Root JSON structure for /sdcard/Mulberry/downloaded_external.json
+ */
+data class DownloadedExternalIndex(
+    @SerializedName("version") val version: Int = 1,
+    @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
+    @SerializedName("books") val books: List<ExternalBookMetadata> = emptyList()
+)
+
+/**
  * Individual reading session or milestone entry
  */
 data class ReadingSessionLog(
@@ -590,6 +617,65 @@ object MulberryStorageManager {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error synchronizing disk with database: ${e.message}", e)
+        }
+    }
+
+    const val EXTERNAL_TRACKING_FILE_NAME = "downloaded_external.json"
+
+    fun getExternalTrackingJsonFile(context: Context): File {
+        val dir = getMulberryDirectory(context)
+        return File(dir, EXTERNAL_TRACKING_FILE_NAME)
+    }
+
+    fun loadDownloadedExternal(context: Context): DownloadedExternalIndex {
+        val file = getExternalTrackingJsonFile(context)
+        if (file.exists() && file.length() > 0L) {
+            val content = SafeFileWriter.readSafely(file)
+            if (!content.isNullOrBlank()) {
+                val parsed = runCatching { gson.fromJson(content, DownloadedExternalIndex::class.java) }.getOrNull()
+                if (parsed != null) return parsed
+            }
+        }
+        return DownloadedExternalIndex()
+    }
+
+    suspend fun recordDownloadedExternal(context: Context, book: ExternalBookMetadata) = withContext(Dispatchers.IO) {
+        val file = getExternalTrackingJsonFile(context)
+        val current = loadDownloadedExternal(context)
+        val updatedBooks = current.books.filter { it.id != book.id } + book
+        val updated = current.copy(
+            updatedAt = System.currentTimeMillis(),
+            books = updatedBooks
+        )
+        SafeFileWriter.writeAtomically(file, gson.toJson(updated))
+    }
+
+    suspend fun updateExternalContributedStatus(context: Context, bookId: String, status: String) = withContext(Dispatchers.IO) {
+        val file = getExternalTrackingJsonFile(context)
+        val current = loadDownloadedExternal(context)
+        val updatedBooks = current.books.map {
+            if (it.id == bookId) it.copy(contributedStatus = status) else it
+        }
+        val updated = current.copy(
+            updatedAt = System.currentTimeMillis(),
+            books = updatedBooks
+        )
+        SafeFileWriter.writeAtomically(file, gson.toJson(updated))
+    }
+
+    fun isBookInMulberry(context: Context, fileName: String, fileSizeBytes: Long): Boolean {
+        val downloaded = loadTrackingIndex(context)
+        if (downloaded.books.any { 
+            it.fileName.equals(fileName, ignoreCase = true) || 
+            (fileSizeBytes > 0 && it.fileSizeBytes == fileSizeBytes) 
+        }) {
+            return true
+        }
+        val external = loadDownloadedExternal(context)
+        val cleanTitle = cleanBookTitle(fileName)
+        return external.books.any { 
+            it.title.equals(cleanTitle, ignoreCase = true) || 
+            it.title.equals(fileName, ignoreCase = true)
         }
     }
 }

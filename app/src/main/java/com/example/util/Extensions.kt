@@ -46,6 +46,48 @@ fun cleanBookTitle(name: String): String {
 
 fun String.toCleanBookTitle(): String = cleanBookTitle(this)
 
+fun String.slugify(): String {
+    val clean = this.lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9\\s_-]"), "")
+        .trim()
+        .replace(Regex("[\\s-]+"), "_")
+    return clean.ifEmpty { "book_${System.currentTimeMillis()}" }
+}
+
+fun generateWebpCover(pdfFile: File, outputFile: File, dpi: Int = 150): Boolean {
+    if (!pdfFile.exists()) return false
+    outputFile.parentFile?.mkdirs()
+    return try {
+        android.os.ParcelFileDescriptor.open(pdfFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+            PdfRenderer(pfd).use { renderer ->
+                if (renderer.pageCount == 0) return false
+                renderer.openPage(0).use { page ->
+                    val scale = (dpi.toFloat() / 72f).coerceIn(1f, 3f)
+                    val w = (page.width * scale).toInt().coerceAtLeast(1)
+                    val h = (page.height * scale).toInt().coerceAtLeast(1)
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val canvas = android.graphics.Canvas(bitmap)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    FileOutputStream(outputFile).use { fos ->
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 85, fos)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            bitmap.compress(Bitmap.CompressFormat.WEBP, 85, fos)
+                        }
+                    }
+                    bitmap.recycle()
+                    true
+                }
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("Extensions", "Failed rendering WebP cover: ${e.message}", e)
+        false
+    }
+}
+
 /**
  * Helper to generate and retrieve cached first-page JPEG thumbnails for PDF books.
  */

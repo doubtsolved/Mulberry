@@ -94,6 +94,7 @@ fun ScheduleSessionSheet(
     vaultBooks: List<BookEntity>,
     existingSession: ReadingSession? = null,
     onDismiss: () -> Unit,
+    onDelete: ((String) -> Unit)? = null,
     onSchedule: (
         book: BookEntity,
         startPage: Int,
@@ -273,7 +274,7 @@ fun ScheduleSessionSheet(
                             Text(
                                 text = "Target Textbook",
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Bold,
                                 color = colors.textPrimary
                             )
 
@@ -390,7 +391,7 @@ fun ScheduleSessionSheet(
                         Text(
                             text = "Page Range",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -462,7 +463,7 @@ fun ScheduleSessionSheet(
                         Text(
                             text = "Date",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -529,7 +530,7 @@ fun ScheduleSessionSheet(
                         Text(
                             text = "Start Time & Reminder",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -614,7 +615,7 @@ fun ScheduleSessionSheet(
                         Text(
                             text = "Session Focus (Optional)",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -680,6 +681,42 @@ fun ScheduleSessionSheet(
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+
+                        if (existingSession != null && onDelete != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    onDelete(existingSession.id)
+                                    onDismiss()
+                                },
+                                shape = RoundedCornerShape(18.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("btn_delete_schedule")
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.Delete24Regular,
+                                    contentDescription = "Delete",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Delete Session",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }

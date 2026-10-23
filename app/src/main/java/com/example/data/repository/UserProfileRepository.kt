@@ -41,6 +41,10 @@ class UserProfileRepository(private val context: Context) {
         private const val KEY_DAILY_PAGE_GOAL = "daily_page_goal"
         private const val KEY_SELECTED_PROF = "selected_prof"
         private const val KEY_LAST_UPDATED = "last_updated"
+        private const val KEY_VIP_CODE = "vip_code"
+        private const val KEY_VIP_TIER = "vip_tier"
+        private const val KEY_VIP_BADGE_LABEL = "vip_badge_label"
+        private const val KEY_DAILY_UPLOAD_LIMIT = "daily_upload_limit"
 
         // Local storage file path: /sdcard/Mulberry/.profile
         val LOCAL_PROFILE_FILE: File
@@ -103,7 +107,11 @@ class UserProfileRepository(private val context: Context) {
             institution = prefs.getString(KEY_INSTITUTION, "") ?: "",
             dailyPageGoal = prefs.getInt(KEY_DAILY_PAGE_GOAL, 20).coerceAtLeast(1),
             selectedProf = prefs.getString(KEY_SELECTED_PROF, "1st Prof") ?: "1st Prof",
-            lastUpdated = prefs.getLong(KEY_LAST_UPDATED, System.currentTimeMillis())
+            lastUpdated = prefs.getLong(KEY_LAST_UPDATED, System.currentTimeMillis()),
+            vipCode = prefs.getString(KEY_VIP_CODE, null),
+            vipTier = prefs.getString(KEY_VIP_TIER, "STANDARD") ?: "STANDARD",
+            vipBadgeLabel = prefs.getString(KEY_VIP_BADGE_LABEL, "Scholar") ?: "Scholar",
+            dailyUploadLimit = prefs.getInt(KEY_DAILY_UPLOAD_LIMIT, 3)
         )
     }
 
@@ -216,6 +224,10 @@ class UserProfileRepository(private val context: Context) {
             .putInt(KEY_DAILY_PAGE_GOAL, profile.dailyPageGoal.coerceAtLeast(1))
             .putString(KEY_SELECTED_PROF, profile.selectedProf.ifEmpty { "1st Prof" })
             .putLong(KEY_LAST_UPDATED, profile.lastUpdated)
+            .putString(KEY_VIP_CODE, profile.vipCode)
+            .putString(KEY_VIP_TIER, profile.vipTier)
+            .putString(KEY_VIP_BADGE_LABEL, profile.vipBadgeLabel)
+            .putInt(KEY_DAILY_UPLOAD_LIMIT, profile.dailyUploadLimit)
             .apply()
     }
 

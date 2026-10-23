@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-sdk tools:overrideLibrary="androidx.pdf, androidx.pdf.viewer.fragment" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
@@ -70,9 +69,18 @@
 
         <activity
             android:name=".ui.reader.ReaderActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@style/Theme.Mulberry.Reader"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/pdf" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+            </intent-filter>
+        </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider;com.mulberry.fileprovider"

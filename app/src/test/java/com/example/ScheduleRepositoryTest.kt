@@ -166,4 +166,47 @@ class ScheduleRepositoryTest {
         assertTrue(recovered.sessions.isEmpty())
         assertEquals(2, recovered.version)
     }
+
+    @Test
+    fun incrementalSessionProgress_countsActualPagesAndPreservesIncomplete() = runBlocking {
+        val session = ReadingSession(
+            bookSlug = "harrison_internal_med",
+            bookTitle = "Harrison Internal Medicine",
+            startPage = 4,
+            endPage = 16,
+            plannedDurationMinutes = 40,
+            scheduledEpochMillis = System.currentTimeMillis()
+        )
+        repository.addSession(session)
+
+        // Shifting from page 4 to page 16 directly visits 2 unique pages
+        val visitedPages = setOf(4, 16)
+        val scheduledVisited = visitedPages.filter { it in session.startPage..session.endPage }
+        val actualPagesRead = scheduledVisited.size
+        assertEquals(2, actualPagesRead)
+
+        repository.updateIncrementalSessionProgress(session.id, actualReadPages = actualPagesRead, actualDurationMinutes = 5)
+
+        val updated = repository.loadSchedule()
+        val inProgressSession = updated.sessions.find { it.id == session.id }!!
+        assertEquals(2, inProgressSession.actualPagesRead)
+        assertFalse("Session should NOT be marked completed when only 2 of 13 pages were read", inProgressSession.isCompleted)
+
+        // Weekly completed pages includes in-progress reading
+        val weeklyPages = repository.getWeeklyCompletedPages(updated.sessions)
+        assertEquals(2, weeklyPages)
+    }
+
+    @Test
+    fun recordExtraPagesRead_contributesToWeeklyCompletedPages() = runBlocking {
+        // Record 5 pages read outside scheduled sessions
+        repository.recordExtraPagesRead(5)
+
+        val weekKey = repository.getCurrentWeekKey()
+        val loaded = repository.loadSchedule()
+        assertEquals(5, loaded.extraWeeklyPages[weekKey])
+
+        val totalWeekly = repository.getWeeklyCompletedPages(loaded.sessions)
+        assertEquals(5, totalWeekly)
+    }
 }

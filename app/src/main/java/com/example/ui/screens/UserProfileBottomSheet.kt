@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -66,7 +67,62 @@ import com.example.ui.components.FluentIcons
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.PoppinsFamily
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+
+private data class VipCodeResult(
+    val code: String,
+    val tier: String,
+    val badgeLabel: String,
+    val dailyLimit: Int
+)
+
+private suspend fun verifyVipCodeNetwork(code: String): Result<VipCodeResult> = withContext(Dispatchers.IO) {
+    try {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val jsonPayload = JSONObject().apply {
+            put("code", code.trim())
+        }
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val body = jsonPayload.toString().toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url("https://mulberry-vault.sahabulmondal2023.workers.dev/api/verify-code")
+            .post(body)
+            .build()
+        val response = client.newCall(request).execute()
+        val responseString = response.body?.string() ?: ""
+        if (response.isSuccessful) {
+            val resJson = JSONObject(responseString)
+            val tier = resJson.optString("tier", resJson.optString("vipTier", "STANDARD")).uppercase()
+            val (mappedTier, defaultBadge, defaultLimit) = when (tier) {
+                "CORE_VIP" -> Triple("CORE_VIP", "Core Architect", 9999)
+                "AMBASSADOR" -> Triple("AMBASSADOR", "Verified Contributor", 25)
+                else -> Triple("STANDARD", "Scholar", 3)
+            }
+            val badgeLabel = resJson.optString("badgeLabel", resJson.optString("vipBadgeLabel", defaultBadge))
+            val dailyLimit = if (resJson.has("dailyUploadLimit")) resJson.getInt("dailyUploadLimit") else defaultLimit
+            Result.success(VipCodeResult(code.trim(), mappedTier, badgeLabel, dailyLimit))
+        } else {
+            val errMsg = try {
+                JSONObject(responseString).optString("error", "Invalid or expired access code")
+            } catch (_: Exception) {
+                "Verification failed (HTTP ${response.code})"
+            }
+            Result.failure(Exception(errMsg))
+        }
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+}
 
 enum class ProfileModalStep {
     VIEW,
@@ -110,6 +166,7 @@ fun UserProfileBottomSheet(
                 ProfileModalStep.VIEW -> {
                     ProfileOverviewContent(
                         userProfile = userProfile,
+                        onSaveProfile = onSaveProfile,
                         onEditClick = { currentStep = ProfileModalStep.EDIT },
                         onDismiss = {
                             coroutineScope.launch {
@@ -151,10 +208,18 @@ fun UserProfileBottomSheet(
 @Composable
 private fun ProfileOverviewContent(
     userProfile: UserProfile,
+    onSaveProfile: (UserProfile) -> Unit,
     onEditClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val colors = LocalMulberryColors.current
+    var isVipExpanded by remember { mutableStateOf(false) }
+    var accessCodeInput by remember(userProfile.vipCode) { mutableStateOf(userProfile.vipCode ?: "") }
+    var isVerifying by remember { mutableStateOf(false) }
+    var verificationError by remember { mutableStateOf<String?>(null) }
+
     val curriculum = remember(userProfile.selectedProf) {
         MBBS_CURRICULUM.find { it.id.equals(userProfile.selectedProf, ignoreCase = true) }
             ?: MBBS_CURRICULUM[0]
@@ -233,19 +298,41 @@ private fun ProfileOverviewContent(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(100.dp),
-                    color = colors.primary.copy(alpha = 0.10f),
-                    border = BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.3f))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = curriculum.title,
-                        fontFamily = InterFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        color = colors.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = colors.primary.copy(alpha = 0.10f),
+                        border = BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = curriculum.title,
+                            fontFamily = InterFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = colors.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    if (!userProfile.vipBadgeLabel.isNullOrBlank() && userProfile.vipTier != "STANDARD") {
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = colors.primary.copy(alpha = 0.14f),
+                            border = BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "★ ${userProfile.vipBadgeLabel}",
+                                fontFamily = InterFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = colors.primary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -263,6 +350,174 @@ private fun ProfileOverviewContent(
                 title = "Institution / Medical College",
                 value = if (userProfile.institution.isNotBlank()) userProfile.institution else "Not Specified"
             )
+        }
+
+        // Special Contributor Access Code Expandable Tile
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(
+                1.dp,
+                if (userProfile.vipTier != "STANDARD") colors.primary.copy(alpha = 0.35f) else colors.borderSubtle
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isVipExpanded = !isVipExpanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = FluentIcons.Lock24Regular,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = "Special Contributor Access Code",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.5.sp,
+                                color = colors.textPrimary
+                            )
+                            val statusSubtitle = if (userProfile.vipTier != "STANDARD") {
+                                "${userProfile.vipBadgeLabel} • ${if (userProfile.dailyUploadLimit >= 1000) "Unlimited" else "${userProfile.dailyUploadLimit}"} uploads/day"
+                            } else {
+                                "Enter code to unlock VIP contributor capabilities"
+                            }
+                            Text(
+                                text = statusSubtitle,
+                                fontFamily = InterFamily,
+                                fontSize = 11.5.sp,
+                                color = if (userProfile.vipTier != "STANDARD") colors.primary else colors.textSecondary
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = if (isVipExpanded) FluentIcons.ChevronUp24Regular else FluentIcons.ChevronDown24Regular,
+                        contentDescription = if (isVipExpanded) "Collapse" else "Expand",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                AnimatedVisibility(visible = isVipExpanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = accessCodeInput,
+                            onValueChange = {
+                                accessCodeInput = it
+                                verificationError = null
+                            },
+                            label = { Text("Access Code", fontFamily = InterFamily, fontSize = 12.sp) },
+                            placeholder = { Text("e.g. VIP-CORE-2026", fontFamily = InterFamily, fontSize = 12.sp) },
+                            singleLine = true,
+                            enabled = !isVerifying,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = colors.borderSubtle,
+                                focusedLabelColor = colors.primary,
+                                cursorColor = colors.primary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vip_access_code_input")
+                        )
+
+                        if (!verificationError.isNullOrBlank()) {
+                            Text(
+                                text = verificationError!!,
+                                fontFamily = InterFamily,
+                                fontSize = 12.sp,
+                                color = colors.accentDanger
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                val trimmed = accessCodeInput.trim()
+                                if (trimmed.isBlank()) {
+                                    verificationError = "Please enter an access code"
+                                    return@Button
+                                }
+                                coroutineScope.launch {
+                                    isVerifying = true
+                                    verificationError = null
+                                    val result = verifyVipCodeNetwork(trimmed)
+                                    isVerifying = false
+                                    result.onSuccess { vip ->
+                                        val updated = userProfile.copy(
+                                            vipCode = vip.code,
+                                            vipTier = vip.tier,
+                                            vipBadgeLabel = vip.badgeLabel,
+                                            dailyUploadLimit = vip.dailyLimit
+                                        )
+                                        onSaveProfile(updated)
+                                        Toast.makeText(context, "Verified as ${vip.badgeLabel}!", Toast.LENGTH_SHORT).show()
+                                    }.onFailure { err ->
+                                        verificationError = err.message ?: "Invalid access code"
+                                        Toast.makeText(context, err.message ?: "Verification failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isVerifying && accessCodeInput.isNotBlank(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("verify_vip_code_button")
+                        ) {
+                            if (isVerifying) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = colors.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Verifying...",
+                                    fontFamily = PoppinsFamily,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            } else {
+                                Text(
+                                    text = "Verify Code",
+                                    fontFamily = PoppinsFamily,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Action: Edit Profile

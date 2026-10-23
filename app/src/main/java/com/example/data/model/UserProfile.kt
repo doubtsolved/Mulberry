@@ -7,5 +7,9 @@ data class UserProfile(
     val institution: String = "",
     val dailyPageGoal: Int = 20,
     val selectedProf: String = "1st Prof",
-    val lastUpdated: Long = System.currentTimeMillis()
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val vipCode: String? = null,
+    val vipTier: String = "STANDARD",
+    val vipBadgeLabel: String = "Scholar",
+    val dailyUploadLimit: Int = 3
 )

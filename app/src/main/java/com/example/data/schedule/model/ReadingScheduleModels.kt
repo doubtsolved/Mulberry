@@ -10,7 +10,8 @@ data class ScheduleVaultFile(
     @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
     @SerializedName("weeklyGoalMinutes") val weeklyGoalMinutes: Int = 420, // 7 hours default
     @SerializedName("weeklyGoalPages") val weeklyGoalPages: Int = 200,
-    @SerializedName("sessions") val sessions: List<ReadingSession> = emptyList()
+    @SerializedName("sessions") val sessions: List<ReadingSession> = emptyList(),
+    @SerializedName("extraWeeklyPages") val extraWeeklyPages: Map<String, Int> = emptyMap()
 )
 
 @Keep

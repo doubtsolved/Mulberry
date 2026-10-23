@@ -73,12 +73,23 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                     }
                 }
             }
+            val extraMap = mutableMapOf<String, Int>()
+            val extraElem = obj.get("extraWeeklyPages")
+            if (extraElem != null && extraElem.isJsonObject) {
+                for ((key, value) in extraElem.asJsonObject.entrySet()) {
+                    if (value != null && value.isJsonPrimitive) {
+                        runCatching { value.asInt }.onSuccess { extraMap[key] = it }
+                    }
+                }
+            }
+
             return ScheduleVaultFile(
                 version = version,
                 updatedAt = updatedAt,
                 weeklyGoalMinutes = weeklyGoalMinutes,
                 weeklyGoalPages = weeklyGoalPages,
-                sessions = sessionsList
+                sessions = sessionsList,
+                extraWeeklyPages = extraMap
             )
         }
     }
@@ -225,7 +236,8 @@ class ScheduleRepository private constructor(private val appContext: Context) {
                 updatedAt = parsed?.updatedAt ?: System.currentTimeMillis(),
                 weeklyGoalMinutes = parsed?.weeklyGoalMinutes ?: 420,
                 weeklyGoalPages = parsed?.weeklyGoalPages ?: 200,
-                sessions = parsed?.sessions ?: emptyList()
+                sessions = parsed?.sessions ?: emptyList(),
+                extraWeeklyPages = parsed?.extraWeeklyPages ?: emptyMap()
             )
 
             _scheduleState.value = finalState
@@ -498,11 +510,50 @@ class ScheduleRepository private constructor(private val appContext: Context) {
         return Pair(startOfWeek, endOfWeek)
     }
 
-    fun getWeeklyCompletedPages(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {
+    fun getCurrentWeekKey(): String {
+        val cal = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+        }
+        val year = cal.get(Calendar.YEAR)
+        val week = cal.get(Calendar.WEEK_OF_YEAR)
+        return "${year}_W${week}"
+    }
+
+    suspend fun recordExtraPagesRead(pages: Int): Unit = withContext(Dispatchers.IO) {
+        if (pages <= 0) return@withContext
+        mutex.withLock {
+            val current = _scheduleState.value
+            val weekKey = getCurrentWeekKey()
+            val currentExtra = current.extraWeeklyPages[weekKey] ?: 0
+            val updatedMap = current.extraWeeklyPages.toMutableMap().apply {
+                put(weekKey, currentExtra + pages)
+            }
+            val updated = current.copy(
+                updatedAt = System.currentTimeMillis(),
+                extraWeeklyPages = updatedMap
+            )
+            persistToDisk(updated)
+            Log.d(TAG, "Recorded $pages extra pages read this week ($weekKey), new total: ${currentExtra + pages}")
+        }
+    }
+
+    fun getWeeklyCompletedPages(
+        sessions: List<ReadingSession> = _scheduleState.value.sessions,
+        extraPages: Int? = null
+    ): Int {
         val (startOfWeek, endOfWeek) = getWeekBounds()
-        return sessions
-            .filter { it.isCompleted && (it.completedEpochMillis ?: it.scheduledEpochMillis) in startOfWeek..endOfWeek }
-            .sumOf { if (it.actualPagesRead > 0) it.actualPagesRead else it.totalPages }
+        val sessionPages = sessions
+            .filter { (it.completedEpochMillis ?: it.scheduledEpochMillis) in startOfWeek..endOfWeek }
+            .sumOf {
+                if (it.isCompleted) {
+                    if (it.actualPagesRead > 0) it.actualPagesRead else it.totalPages
+                } else {
+                    it.actualPagesRead
+                }
+            }
+        val weekKey = getCurrentWeekKey()
+        val extra = extraPages ?: (_scheduleState.value.extraWeeklyPages[weekKey] ?: 0)
+        return sessionPages + extra
     }
 
     fun getWeeklyPlannedPages(sessions: List<ReadingSession> = _scheduleState.value.sessions): Int {

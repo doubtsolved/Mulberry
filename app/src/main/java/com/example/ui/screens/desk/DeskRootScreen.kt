@@ -64,6 +64,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -245,86 +246,106 @@ fun DeskRootScreen(
             .background(colors.backgroundGradient),
         containerColor = Color.Transparent,
         topBar = {
-            // CLEAN TOP BAR: Single clean title "Desk" + Schedule Action Pill "[ + Plan Goal ]"
+            // CLEAN TOP BAR: Single clean title "Desk" + Profile Avatar
             DeskTopAppBar(
-                isRefreshing = isRefreshing,
                 userProfile = userProfile,
-                onPlanGoalClick = {
-                    sessionToEdit = null
-                    showCreateSheet = true
-                },
                 onProfileClick = {
                     showProfileModal = true
-                },
-                onRefresh = {
-                    if (!isRefreshing) {
-                        coroutineScope.launch(Dispatchers.IO) {
-                            runCatching { deskViewModel.reload() }
-                        }
-                    }
                 }
             )
         }
     ) { innerPadding ->
-        if (isWideScreen) {
-            // RESPONSIVE DUAL-PANE LAYOUT: Left pane for goals & schedule, Right pane for shelves
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                // LEFT PANE (Goals & Today's Schedule Sessions)
-                Column(
-                    modifier = Modifier
-                        .width(360.dp)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                if (!isRefreshing) {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        runCatching { deskViewModel.reload() }
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            if (isWideScreen) {
+                // RESPONSIVE DUAL-PANE LAYOUT: Left pane for goals & schedule, Right pane for shelves
+                Row(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    WeeklyProgressCard(
-                        completedPages = weeklyCompletedPages,
-                        goalPages = weeklyGoalPages,
-                        plannedPages = weeklyPlannedPages,
-                        progressPercent = weeklyProgressPercent,
-                        onEditGoalClick = { showGoalSheet = true }
-                    )
+                    // LEFT PANE (Goals & Today's Schedule Sessions)
+                    Column(
+                        modifier = Modifier
+                            .width(360.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        WeeklyProgressCard(
+                            completedPages = weeklyCompletedPages,
+                            goalPages = weeklyGoalPages,
+                            plannedPages = weeklyPlannedPages,
+                            progressPercent = weeklyProgressPercent,
+                            onEditGoalClick = { showGoalSheet = true }
+                        )
 
-                    val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
-                    SectionHeader(
-                        title = "TODAY'S FOCUS",
-                        badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null
-                    )
+                        val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
+                        SectionHeader(
+                            title = "Today's Focus",
+                            badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null,
+                            icon = FluentIcons.CalendarLtr24Regular
+                        )
 
-                    if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
-                        TodayEmptyState(onScheduleClick = {
-                            sessionToEdit = null
-                            showCreateSheet = true
-                        })
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            activeTodaySessions.forEach { session ->
-                                TodayFocusSessionCard(
-                                    session = session,
-                                    isCompleted = false,
-                                    onReadClick = { onOpenSession(session) },
-                                    onToggleComplete = { deskViewModel.markCompleted(session.id) }
-                                )
-                            }
-                            completedTodaySessions.forEach { session ->
-                                TodayFocusSessionCard(
-                                    session = session,
-                                    isCompleted = true,
-                                    onReadClick = { onOpenSession(session) },
-                                    onToggleComplete = { deskViewModel.toggleCompleted(session.id) }
+                        if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
+                            PlanSessionActionCard(
+                                onClick = {
+                                    sessionToEdit = null
+                                    showCreateSheet = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                activeTodaySessions.forEach { session ->
+                                    TodayFocusSessionCard(
+                                        session = session,
+                                        isCompleted = false,
+                                        onReadClick = { onOpenSession(session) },
+                                        onToggleComplete = { deskViewModel.markCompleted(session.id) },
+                                        onLongClick = {
+                                            sessionToEdit = session
+                                            showCreateSheet = true
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                completedTodaySessions.forEach { session ->
+                                    TodayFocusSessionCard(
+                                        session = session,
+                                        isCompleted = true,
+                                        onReadClick = { onOpenSession(session) },
+                                        onToggleComplete = { deskViewModel.toggleCompleted(session.id) },
+                                        onLongClick = {
+                                            sessionToEdit = session
+                                            showCreateSheet = true
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                PlanSessionActionCard(
+                                    onClick = {
+                                        sessionToEdit = null
+                                        showCreateSheet = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
-                }
 
                 // Vertical Hairline Divider
                 Box(
@@ -454,9 +475,7 @@ fun DeskRootScreen(
         } else {
             // PORTRAIT SINGLE-COLUMN FLUID LAYOUT
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -475,17 +494,20 @@ fun DeskRootScreen(
                 item(key = "today_focus_header") {
                     val totalTodayCount = activeTodaySessions.size + completedTodaySessions.size
                     SectionHeader(
-                        title = "TODAY'S FOCUS",
-                        badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null
+                        title = "Today's Focus",
+                        badge = if (totalTodayCount > 0) "$totalTodayCount SESSIONS • $todayPagesCount PAGES" else null,
+                        icon = FluentIcons.CalendarLtr24Regular
                     )
                 }
 
                 if (activeTodaySessions.isEmpty() && completedTodaySessions.isEmpty()) {
-                    item(key = "today_empty_state") {
-                        TodayEmptyState(onScheduleClick = {
-                            sessionToEdit = null
-                            showCreateSheet = true
-                        })
+                    item(key = "today_empty_plan_card") {
+                        PlanSessionActionCard(
+                            onClick = {
+                                sessionToEdit = null
+                                showCreateSheet = true
+                            }
+                        )
                     }
                 } else {
                     item(key = "today_focus_row") {
@@ -499,7 +521,11 @@ fun DeskRootScreen(
                                     session = session,
                                     isCompleted = false,
                                     onReadClick = { onOpenSession(session) },
-                                    onToggleComplete = { deskViewModel.markCompleted(session.id) }
+                                    onToggleComplete = { deskViewModel.markCompleted(session.id) },
+                                    onLongClick = {
+                                        sessionToEdit = session
+                                        showCreateSheet = true
+                                    }
                                 )
                             }
 
@@ -508,7 +534,20 @@ fun DeskRootScreen(
                                     session = session,
                                     isCompleted = true,
                                     onReadClick = { onOpenSession(session) },
-                                    onToggleComplete = { deskViewModel.toggleCompleted(session.id) }
+                                    onToggleComplete = { deskViewModel.toggleCompleted(session.id) },
+                                    onLongClick = {
+                                        sessionToEdit = session
+                                        showCreateSheet = true
+                                    }
+                                )
+                            }
+
+                            item(key = "plan_session_card") {
+                                PlanSessionActionCard(
+                                    onClick = {
+                                        sessionToEdit = null
+                                        showCreateSheet = true
+                                    }
                                 )
                             }
                         }
@@ -626,6 +665,7 @@ fun DeskRootScreen(
             }
         }
     }
+}
 
     // SHELF ACTIONS BOTTOM SHEET (Triggered on Long Press)
     selectedShelfBook?.let { book ->
@@ -790,6 +830,14 @@ fun DeskRootScreen(
                     sessionToEdit = null
                 }
             },
+            onDelete = { sessionId ->
+                deskViewModel.deleteSession(sessionId)
+                coroutineScope.launch {
+                    sheetState.hide()
+                    showCreateSheet = false
+                    sessionToEdit = null
+                }
+            },
             onSchedule = { book, startPage, endPage, scheduledEpochMillis, reminderMinutesBefore, microNote ->
                 if (sessionToEdit != null) {
                     deskViewModel.editSession(
@@ -857,24 +905,10 @@ fun DeskRootScreen(
 
 @Composable
 private fun DeskTopAppBar(
-    isRefreshing: Boolean,
     userProfile: UserProfile,
-    onPlanGoalClick: () -> Unit,
-    onProfileClick: () -> Unit,
-    onRefresh: () -> Unit
+    onProfileClick: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
-
-    val infiniteTransition = rememberInfiniteTransition(label = "RefreshRotation")
-    val rotationAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "Rotation"
-    )
 
     Row(
         modifier = Modifier
@@ -897,70 +931,68 @@ private fun DeskTopAppBar(
             )
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Schedule Action Pill: [ + Plan Goal ]
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = colors.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable { onPlanGoalClick() }
-                    .testTag("btn_desk_plan_goal")
-            ) {
+        // Top Bar Profile Avatar & Student Name with VIP Badge
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onProfileClick() }
+                .padding(vertical = 4.dp, horizontal = 4.dp)
+                .testTag("desk_profile_avatar_button")
+        ) {
+            Column(horizontalAlignment = Alignment.End) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = FluentIcons.CalendarAdd24Regular,
-                        contentDescription = "Plan Goal",
-                        tint = colors.onPrimary,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = "+ Plan Goal",
+                        text = userProfile.displayName.ifEmpty { "Student" },
                         fontFamily = PoppinsFamily,
-                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = colors.onPrimary
+                        fontSize = 13.5.sp,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (!userProfile.vipBadgeLabel.isNullOrBlank() && userProfile.vipTier != "STANDARD") {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.primary.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = userProfile.vipBadgeLabel,
+                                fontFamily = com.example.ui.theme.InterFamily,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
-            }
-
-            IconButton(
-                onClick = onRefresh,
-                enabled = !isRefreshing,
-                modifier = Modifier
-                    .size(36.dp)
-                    .testTag("btn_refresh_desk")
-            ) {
-                Icon(
-                    imageVector = FluentIcons.ArrowSync24Regular,
-                    contentDescription = "Refresh Schedule",
-                    tint = if (isRefreshing) colors.primary else colors.textPrimary,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .then(if (isRefreshing) Modifier.rotate(rotationAngle) else Modifier)
+                Text(
+                    text = userProfile.selectedProf.ifEmpty { "MBBS Scholar" },
+                    fontFamily = com.example.ui.theme.InterFamily,
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
                 )
             }
 
-            // Top Bar Profile Avatar
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(colors.primary.copy(alpha = 0.12f))
-                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                    .clickable { onProfileClick() }
-                    .testTag("desk_profile_avatar_button"),
+                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = getInitials(userProfile.displayName),
                     fontFamily = PoppinsFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     color = colors.primary
                 )
             }
@@ -984,7 +1016,9 @@ private fun TodayFocusSessionCard(
     session: ReadingSession,
     isCompleted: Boolean,
     onReadClick: () -> Unit,
-    onToggleComplete: () -> Unit
+    onToggleComplete: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier.width(280.dp)
 ) {
     val colors = LocalMulberryColors.current
 
@@ -992,10 +1026,12 @@ private fun TodayFocusSessionCard(
         shape = RoundedCornerShape(20.dp),
         color = colors.surfaceCard,
         border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.borderSubtle),
-        modifier = Modifier
-            .width(280.dp)
+        modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .clickable { onReadClick() }
+            .combinedClickable(
+                onClick = onReadClick,
+                onLongClick = onLongClick
+            )
             .testTag("today_focus_card_${session.id}")
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -1024,7 +1060,7 @@ private fun TodayFocusSessionCard(
                     Text(
                         text = session.bookTitle,
                         fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = colors.textPrimary,
                         maxLines = 1,
@@ -1102,6 +1138,96 @@ private fun TodayFocusSessionCard(
                     fontSize = 11.sp,
                     color = colors.textSecondary
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlanSessionActionCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.width(280.dp)
+) {
+    val colors = LocalMulberryColors.current
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = colors.surfaceCard,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.35f)),
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .testTag("plan_session_action_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.primary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.CalendarAdd24Regular,
+                        contentDescription = "Plan Session",
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Plan a Session",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = colors.textPrimary,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "Set target pages & reminder",
+                        fontFamily = InterFamily,
+                        fontSize = 12.sp,
+                        color = colors.textSecondary,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.primary.copy(alpha = 0.1f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Add24Regular,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Add Schedule",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = colors.primary
+                    )
+                }
             }
         }
     }
@@ -1477,42 +1603,49 @@ private fun WeeklyProgressCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Concise single-line stat: "X / Y pages read • Z planned"
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Single Progress Bar with Embedded Stat Text
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surfaceTint)
+                    .border(0.5.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
             ) {
-                Text(
-                    text = "$completedPages / $goalPages pages read",
-                    fontFamily = InterFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                    color = colors.textPrimary
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedProgress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.primary)
                 )
-                if (plannedPages > 0) {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val label = buildString {
+                        append("$completedPages of $goalPages pages read")
+                        if (plannedPages > 0) {
+                            append(" • $plannedPages planned")
+                        }
+                    }
                     Text(
-                        text = "$plannedPages planned",
-                        fontFamily = InterFamily,
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
+                        text = label,
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (animatedProgress > 0.55f) colors.onPrimary else colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            LinearProgressIndicator(
-                progress = { animatedProgress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = colors.primary,
-                trackColor = colors.surfaceTint
-            )
         }
     }
 }
@@ -1589,7 +1722,7 @@ private fun ShelfEmptyStateCard() {
             Text(
                 text = "Your shelf is empty",
                 fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = colors.textPrimary
             )
@@ -1604,53 +1737,6 @@ private fun ShelfEmptyStateCard() {
     }
 }
 
-@Composable
-private fun TodayEmptyState(onScheduleClick: () -> Unit) {
-    val colors = LocalMulberryColors.current
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = colors.surfaceCard.copy(alpha = 0.7f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(colors.surfaceTint),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = FluentIcons.CalendarLtr24Regular,
-                    contentDescription = null,
-                    tint = colors.primary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "No study goals scheduled for today",
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = colors.textPrimary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Tap [+ Plan Goal] to set your daily reading pace.",
-                fontFamily = InterFamily,
-                fontSize = 12.sp,
-                color = colors.textSecondary
-            )
-        }
-    }
-}
 
 private fun resolveBookPath(vaultPath: String, bookFileName: String, bookRelativePath: String = ""): String {
     if (bookRelativePath.isNotBlank()) {

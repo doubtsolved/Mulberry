@@ -96,6 +96,7 @@ fun ReaderTopBarScreen(
     onOpenWith: () -> Unit,
     onShare: () -> Unit,
     onFeedback: () -> Unit,
+    onAddToDesk: (() -> Unit)? = null,
     onMatchesChanged: (List<SearchMatch>, Int) -> Unit = { _, _ -> }
 ) {
     val colors = LocalMulberryColors.current
@@ -391,6 +392,15 @@ fun ReaderTopBarScreen(
                         moreSheetState.hide()
                         showMoreMenu = false
                         onFeedback()
+                    }
+                },
+                onAddToDesk = onAddToDesk?.let { action ->
+                    {
+                        coroutineScope.launch {
+                            moreSheetState.hide()
+                            showMoreMenu = false
+                            action()
+                        }
                     }
                 }
             )
@@ -846,7 +856,8 @@ fun ReaderMoreMenuContent(
     onOpenWith: () -> Unit,
     onShare: () -> Unit,
     onDocumentInfo: () -> Unit,
-    onFeedback: () -> Unit
+    onFeedback: () -> Unit,
+    onAddToDesk: (() -> Unit)? = null
 ) {
     val colors = LocalMulberryColors.current
 
@@ -876,6 +887,14 @@ fun ReaderMoreMenuContent(
         )
 
         Spacer(modifier = Modifier.height(8.dp))
+
+        if (onAddToDesk != null) {
+            SingleLineMenuItem(
+                icon = FluentIcons.ArrowDownload24Regular,
+                label = "Add to Desk",
+                onClick = onAddToDesk
+            )
+        }
 
         SingleLineMenuItem(
             icon = FluentIcons.Open24Regular,
