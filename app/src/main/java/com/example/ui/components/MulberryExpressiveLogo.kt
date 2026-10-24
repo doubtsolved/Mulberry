@@ -7,21 +7,40 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.data.model.UserProfile
+import com.example.ui.theme.LocalMulberryColors
+import com.example.ui.theme.PoppinsFamily
 
 /**
  * Universal Material 3 Expressive Mulberry Logo.
@@ -85,5 +104,137 @@ fun MulberryExpressiveLogo(
             contentDescription = "Mulberry Expressive Logo",
             modifier = Modifier.matchParentSize()
         )
+    }
+}
+
+/**
+ * Tier-outlined profile avatar:
+ * - CORE_VIP (Core Architect): Golden outline
+ * - AMBASSADOR (Ambassador): Silver outline
+ * - STANDARD (Normal student): No outline
+ */
+@Composable
+fun MulberryProfileAvatar(
+    userProfile: UserProfile,
+    onClick: (() -> Unit)? = null,
+    size: Dp = 38.dp,
+    cornerRadius: Dp = 12.dp,
+    fontSize: TextUnit = 14.sp,
+    avatarTestTag: String? = null,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalMulberryColors.current
+    val shape = RoundedCornerShape(cornerRadius)
+
+    val outlineBrush: Brush? = when (userProfile.vipTier.uppercase()) {
+        "CORE_VIP" -> Brush.linearGradient(
+            colors = listOf(
+                Color(0xFFFFD700),
+                Color(0xFFF59E0B),
+                Color(0xFFFFE55C)
+            )
+        )
+        "AMBASSADOR" -> Brush.linearGradient(
+            colors = listOf(
+                Color(0xFFE2E8F0),
+                Color(0xFF94A3B8),
+                Color(0xFFF1F5F9)
+            )
+        )
+        else -> null
+    }
+
+    var boxModifier = modifier
+        .size(size)
+        .clip(shape)
+        .background(colors.primary.copy(alpha = 0.12f))
+
+    if (outlineBrush != null) {
+        boxModifier = boxModifier.border(
+            width = 2.dp,
+            brush = outlineBrush,
+            shape = shape
+        )
+    }
+
+    if (onClick != null) {
+        boxModifier = boxModifier.clickable { onClick() }
+    }
+
+    if (avatarTestTag != null) {
+        boxModifier = boxModifier.testTag(avatarTestTag)
+    }
+
+    Box(
+        modifier = boxModifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = extractInitials(userProfile.displayName),
+            fontFamily = PoppinsFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = fontSize,
+            color = colors.primary
+        )
+    }
+}
+
+/**
+ * Unified top header across Desk, Mulberry Shelf (Library), and Settings:
+ * [Mulberry Icon] [Title]                        [Profile Icon]
+ */
+@Composable
+fun MulberryUnifiedHeader(
+    title: String,
+    userProfile: UserProfile,
+    onProfileClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 20.dp,
+    verticalPadding: Dp = 12.dp,
+    titleTestTag: String? = null,
+    avatarTestTag: String = "header_profile_avatar_button"
+) {
+    val colors = LocalMulberryColors.current
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            MulberryExpressiveLogo(size = 32.dp, showContainer = false)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = title,
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                color = colors.textPrimary,
+                letterSpacing = (-0.5).sp,
+                modifier = if (titleTestTag != null) Modifier.testTag(titleTestTag) else Modifier
+            )
+        }
+
+        MulberryProfileAvatar(
+            userProfile = userProfile,
+            onClick = onProfileClick,
+            size = 38.dp,
+            cornerRadius = 12.dp,
+            fontSize = 14.sp,
+            avatarTestTag = avatarTestTag
+        )
+    }
+}
+
+private fun extractInitials(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "M"
+    val parts = trimmed.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+    return if (parts.size >= 2) {
+        "${parts[0].first().uppercaseChar()}${parts[1].first().uppercaseChar()}"
+    } else {
+        trimmed.take(2).uppercase()
     }
 }

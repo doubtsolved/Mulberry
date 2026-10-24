@@ -626,47 +626,14 @@ private fun LibraryMainShelfContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // 1. TOP HEADER ("Mulberry Shelf") with Expressive Logo & Profile Avatar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                com.example.ui.components.MulberryExpressiveLogo(size = 32.dp, showContainer = false)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Mulberry Shelf",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    color = colors.textPrimary,
-                    letterSpacing = (-0.5).sp,
-                    modifier = Modifier.testTag("mulberry_shelf_title")
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.primary.copy(alpha = 0.12f))
-                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                    .clickable { onProfileClick() }
-                    .testTag("library_profile_avatar_button"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getInitials(userProfile.displayName),
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = colors.primary
-                )
-            }
-        }
+        // 1. TOP HEADER ("Mulberry Shelf") with Expressive Logo & Tier-Outlined Profile Avatar
+        com.example.ui.components.MulberryUnifiedHeader(
+            title = "Mulberry Shelf",
+            userProfile = userProfile,
+            onProfileClick = onProfileClick,
+            titleTestTag = "mulberry_shelf_title",
+            avatarTestTag = "library_profile_avatar_button"
+        )
 
         // 2. FULL-WIDTH SEARCH BAR ROW
         Row(

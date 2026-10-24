@@ -214,14 +214,14 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Screen Header: Poppins Bold 28sp
-            Text(
-                text = "Settings",
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                color = colors.textPrimary,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            // Unified Screen Header: [Mulberry Icon] Settings         [Profile Icon]
+            com.example.ui.components.MulberryUnifiedHeader(
+                title = "Settings",
+                userProfile = userProfile,
+                onProfileClick = { showProfileBottomSheet = true },
+                horizontalPadding = 4.dp,
+                verticalPadding = 4.dp,
+                avatarTestTag = "settings_profile_avatar_button"
             )
 
             // TOP PROFILE HERO CARD
@@ -246,22 +246,13 @@ fun SettingsScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left: Initials Avatar Box (52.dp circle/rounded square)
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = getInitials(userProfile.displayName),
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
+                    // Left: Initials Avatar Box (52.dp rounded square with VIP tier outline)
+                    com.example.ui.components.MulberryProfileAvatar(
+                        userProfile = userProfile,
+                        size = 52.dp,
+                        cornerRadius = 16.dp,
+                        fontSize = 18.sp
+                    )
 
                     // Middle: Column(modifier = Modifier.weight(1f).padding(horizontal = 14.dp))
                     Column(

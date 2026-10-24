@@ -2703,6 +2703,192 @@ object FluentIcons {
             close()
         }
     }.build()
+
+    // Eye24Regular (Eye Relax / Comfort)
+    val Eye24Regular: ImageVector = ImageVector.Builder(
+        name = "Eye24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(2.25f, 12f)
+            curveTo(4.2f, 7.6f, 7.8f, 5f, 12f, 5f)
+            curveTo(16.2f, 5f, 19.8f, 7.6f, 21.75f, 12f)
+            curveTo(19.8f, 16.4f, 16.2f, 19f, 12f, 19f)
+            curveTo(7.8f, 19f, 4.2f, 16.4f, 2.25f, 12f)
+            close()
+            moveTo(12f, 15f)
+            curveTo(13.66f, 15f, 15f, 13.66f, 15f, 12f)
+            curveTo(15.0f, 10.34f, 13.66f, 9f, 12f, 9f)
+            curveTo(10.34f, 9f, 9f, 10.34f, 9f, 12f)
+            curveTo(9f, 13.66f, 10.34f, 15f, 12f, 15f)
+            close()
+        }
+    }.build()
+
+    // Eye24Filled
+    val Eye24Filled: ImageVector = ImageVector.Builder(
+        name = "Eye24Filled",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12f, 5f)
+            curveTo(7.8f, 5f, 4.2f, 7.6f, 2.25f, 12f)
+            curveTo(4.2f, 16.4f, 7.8f, 19f, 12f, 19f)
+            curveTo(16.2f, 19f, 19.8f, 16.4f, 21.75f, 12f)
+            curveTo(19.8f, 7.6f, 16.2f, 5f, 12f, 5f)
+            close()
+            moveTo(12f, 15.5f)
+            curveTo(10.07f, 15.5f, 8.5f, 13.93f, 8.5f, 12f)
+            curveTo(8.5f, 10.07f, 10.07f, 8.5f, 12f, 8.5f)
+            curveTo(13.93f, 8.5f, 15.5f, 10.07f, 15.5f, 12f)
+            curveTo(15.5f, 13.93f, 13.93f, 15.5f, 12f, 15.5f)
+            close()
+        }
+    }.build()
+
+    // WeatherSunny24Regular (Warmth / Brightness)
+    val WeatherSunny24Regular: ImageVector = ImageVector.Builder(
+        name = "WeatherSunny24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(12f, 16.5f)
+            curveTo(14.49f, 16.5f, 16.5f, 14.49f, 16.5f, 12f)
+            curveTo(16.5f, 9.51f, 14.49f, 7.5f, 12f, 7.5f)
+            curveTo(9.51f, 7.5f, 7.5f, 9.51f, 7.5f, 12f)
+            curveTo(7.5f, 14.49f, 9.51f, 16.5f, 12f, 16.5f)
+            close()
+            moveTo(12f, 3f)
+            verticalLineTo(4.8f)
+            moveTo(12f, 19.2f)
+            verticalLineTo(21f)
+            moveTo(3f, 12f)
+            horizontalLineTo(4.8f)
+            moveTo(19.2f, 12f)
+            horizontalLineTo(21f)
+            moveTo(5.64f, 5.64f)
+            lineTo(6.91f, 6.91f)
+            moveTo(17.09f, 17.09f)
+            lineTo(18.36f, 18.36f)
+            moveTo(18.36f, 5.64f)
+            lineTo(17.09f, 6.91f)
+            moveTo(6.91f, 17.09f)
+            lineTo(5.64f, 18.36f)
+        }
+    }.build()
+
+    // WeatherMoon24Regular (Night Dimmer)
+    val WeatherMoon24Regular: ImageVector = ImageVector.Builder(
+        name = "WeatherMoon24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(20.1f, 14.6f)
+            curveTo(18.8f, 15.1f, 17.4f, 15.3f, 16f, 15f)
+            curveTo(12.2f, 14.2f, 9.5f, 10.7f, 9.8f, 6.8f)
+            curveTo(9.9f, 5.6f, 10.3f, 4.5f, 11f, 3.5f)
+            curveTo(7f, 4.2f, 4f, 7.7f, 4f, 11.9f)
+            curveTo(4f, 16.6f, 7.8f, 20.5f, 12.6f, 20.5f)
+            curveTo(16.2f, 20.5f, 19.3f, 18.1f, 20.1f, 14.6f)
+            close()
+        }
+    }.build()
+
+    // DualScreen24Regular (Dual-Page Book Spread)
+    val DualScreen24Regular: ImageVector = ImageVector.Builder(
+        name = "DualScreen24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(3f, 5.5f)
+            curveTo(3f, 4.67f, 3.67f, 4f, 4.5f, 4f)
+            horizontalLineTo(19.5f)
+            curveTo(20.33f, 4f, 21f, 4.67f, 21f, 5.5f)
+            verticalLineTo(18.5f)
+            curveTo(21f, 19.33f, 20.33f, 20f, 19.5f, 20f)
+            horizontalLineTo(4.5f)
+            curveTo(3.67f, 20f, 3f, 19.33f, 3f, 18.5f)
+            close()
+            moveTo(12f, 4f)
+            verticalLineTo(20f)
+            moveTo(6f, 9f)
+            horizontalLineTo(9f)
+            moveTo(6f, 12.5f)
+            horizontalLineTo(9f)
+            moveTo(15f, 9f)
+            horizontalLineTo(18f)
+            moveTo(15f, 12.5f)
+            horizontalLineTo(18f)
+        }
+    }.build()
+
+    // PageSingle24Regular (Single-Page Portrait Mode)
+    val PageSingle24Regular: ImageVector = ImageVector.Builder(
+        name = "PageSingle24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(6f, 4f)
+            horizontalLineTo(18f)
+            curveTo(18.83f, 4f, 19.5f, 4.67f, 19.5f, 5.5f)
+            verticalLineTo(18.5f)
+            curveTo(19.5f, 19.33f, 18.83f, 20f, 18f, 20f)
+            horizontalLineTo(6f)
+            curveTo(5.17f, 20f, 4.5f, 19.33f, 4.5f, 18.5f)
+            verticalLineTo(5.5f)
+            curveTo(4.5f, 4.67f, 5.17f, 4f, 6f, 4f)
+            close()
+            moveTo(8.5f, 9f)
+            horizontalLineTo(15.5f)
+            moveTo(8.5f, 12.5f)
+            horizontalLineTo(15.5f)
+            moveTo(8.5f, 16f)
+            horizontalLineTo(13f)
+        }
+    }.build()
 }
 
 

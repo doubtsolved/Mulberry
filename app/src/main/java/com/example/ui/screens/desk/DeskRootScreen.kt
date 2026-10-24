@@ -97,11 +97,13 @@ import coil.request.ImageRequest
 import com.example.data.model.BookEntity
 import com.example.data.model.VaultEntity
 import com.example.data.schedule.model.ReadingSession
+import com.example.ui.components.ContributionLiveStatusCard
 import com.example.ui.components.FluentIcons
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.PoppinsFamily
+import com.example.util.slugify
 import com.example.viewmodel.DeskScheduleViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -140,6 +142,7 @@ fun DeskRootScreen(
 
     val userProfileRepo = remember { com.example.data.repository.UserProfileRepository.getInstance(context) }
     val userProfile by userProfileRepo.userProfile.collectAsState()
+    val uploadState by com.example.util.BookContributionManager.uploadState.collectAsState()
     var showProfileModal by remember { mutableStateOf(false) }
 
     // Shelf long-press actions bottom sheet state
@@ -282,6 +285,14 @@ fun DeskRootScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        if (uploadState !is com.example.util.ContributionUploadState.Idle) {
+                            ContributionLiveStatusCard(
+                                state = uploadState,
+                                onCancel = { slug -> com.example.util.BookContributionManager.cancelContribution(context, slug) },
+                                onDismiss = { com.example.util.BookContributionManager.dismissUploadState() }
+                            )
+                        }
+
                         WeeklyProgressCard(
                             completedPages = weeklyCompletedPages,
                             goalPages = weeklyGoalPages,
@@ -479,6 +490,16 @@ fun DeskRootScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (uploadState !is com.example.util.ContributionUploadState.Idle) {
+                    item(key = "contribution_live_status_card") {
+                        ContributionLiveStatusCard(
+                            state = uploadState,
+                            onCancel = { slug -> com.example.util.BookContributionManager.cancelContribution(context, slug) },
+                            onDismiss = { com.example.util.BookContributionManager.dismissUploadState() }
+                        )
+                    }
+                }
+
                 // 1. Shortened Weekly Progress Card
                 item(key = "weekly_progress_card") {
                     WeeklyProgressCard(
@@ -762,7 +783,63 @@ fun DeskRootScreen(
                     }
                 )
 
-                // Action 5: Delete Download (Triggers confirmation dialog)
+                // Action 5: Community Library Contribution (for local imported external books)
+                val externalIndex = remember(book, uploadState) {
+                    com.example.util.MulberryStorageManager.loadDownloadedExternal(context)
+                }
+                val externalMeta = remember(book, externalIndex) {
+                    externalIndex.books.firstOrNull {
+                        it.id == book.slug || it.localPath == book.binFilePath || it.title.equals(book.title, ignoreCase = true)
+                    }
+                }
+                val isExternalBook = book.author == "Local Import" || externalMeta != null
+                val contributedStatus = externalMeta?.contributedStatus ?: if (isExternalBook) "NONE" else ""
+
+                if (isExternalBook) {
+                    if (contributedStatus == "PENDING" || contributedStatus == "SUBMITTED") {
+                        ShelfActionRow(
+                            icon = FluentIcons.Checkmark24Regular,
+                            label = "Submitted for Review",
+                            textColor = colors.accentSuccess,
+                            onClick = {
+                                selectedShelfBook = null
+                                Toast.makeText(
+                                    context,
+                                    "This book has been submitted for community review.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    } else {
+                        ShelfActionRow(
+                            icon = FluentIcons.ArrowUpload24Regular,
+                            label = "Contribute to Community Library",
+                            textColor = colors.primary,
+                            onClick = {
+                                selectedShelfBook = null
+                                val slugToUse = externalMeta?.id ?: book.slug.ifEmpty { book.title.slugify() }
+                                com.example.util.BookContributionManager.enqueueContribution(
+                                    context = context,
+                                    slug = slugToUse,
+                                    title = book.title,
+                                    author = book.author.ifEmpty { "Local Import" },
+                                    prof = book.prof.ifEmpty { userProfile.selectedProf.ifEmpty { "1st Prof" } },
+                                    subject = book.subject.ifEmpty { "General" },
+                                    type = book.type.ifEmpty { "Standard Textbook" },
+                                    totalPages = book.pageCount,
+                                    sizeMb = book.sizeMb
+                                )
+                                Toast.makeText(
+                                    context,
+                                    "Enqueued '${book.title}' for library upload",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    }
+                }
+
+                // Action 6: Delete Download (Triggers confirmation dialog)
                 ShelfActionRow(
                     icon = FluentIcons.Delete24Regular,
                     label = "Delete Download",
@@ -908,96 +985,13 @@ private fun DeskTopAppBar(
     userProfile: UserProfile,
     onProfileClick: () -> Unit
 ) {
-    val colors = LocalMulberryColors.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            com.example.ui.components.MulberryExpressiveLogo(size = 32.dp, showContainer = false)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Desk",
-                fontFamily = PoppinsFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                color = colors.textPrimary,
-                letterSpacing = (-0.5).sp
-            )
-        }
-
-        // Top Bar Profile Avatar & Student Name with VIP Badge
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { onProfileClick() }
-                .padding(vertical = 4.dp, horizontal = 4.dp)
-                .testTag("desk_profile_avatar_button")
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = userProfile.displayName.ifEmpty { "Student" },
-                        fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.5.sp,
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (!userProfile.vipBadgeLabel.isNullOrBlank() && userProfile.vipTier != "STANDARD") {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.primary.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.35f))
-                        ) {
-                            Text(
-                                text = userProfile.vipBadgeLabel,
-                                fontFamily = com.example.ui.theme.InterFamily,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-                Text(
-                    text = userProfile.selectedProf.ifEmpty { "MBBS Scholar" },
-                    fontFamily = com.example.ui.theme.InterFamily,
-                    fontSize = 11.sp,
-                    color = colors.textSecondary
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.primary.copy(alpha = 0.12f))
-                    .border(1.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getInitials(userProfile.displayName),
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = colors.primary
-                )
-            }
-        }
-    }
+    com.example.ui.components.MulberryUnifiedHeader(
+        title = "Desk",
+        userProfile = userProfile,
+        onProfileClick = onProfileClick,
+        modifier = Modifier.statusBarsPadding(),
+        avatarTestTag = "desk_profile_avatar_button"
+    )
 }
 
 private fun getInitials(name: String): String {

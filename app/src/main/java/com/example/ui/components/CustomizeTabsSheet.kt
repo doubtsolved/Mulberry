@@ -232,6 +232,7 @@ fun CustomizeTabsSheet(
                             val activeList = tabConfigs.filter { it.isVisible }
                             activeList.forEachIndexed { idx, config ->
                                 val isFirst = idx == 0
+                                val isLibraryTab = config.tab == MulberryTab.LIBRARY
                                 Column(
                                     modifier = Modifier.weight(1f),
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -240,26 +241,35 @@ fun CustomizeTabsSheet(
                                     Box(
                                         modifier = Modifier
                                             .width(42.dp)
-                                            .height(26.dp)
-                                            .clip(RoundedCornerShape(13.dp))
+                                            .height(if (isLibraryTab) 32.dp else 26.dp)
+                                            .clip(RoundedCornerShape(if (isLibraryTab) 16.dp else 13.dp))
                                             .background(if (isFirst) colors.surfaceTint else Color.Transparent),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = if (isFirst) config.tab.filledIcon else config.tab.regularIcon,
-                                            contentDescription = config.tab.title,
-                                            tint = if (isFirst) colors.primary else colors.textSecondary,
-                                            modifier = Modifier.size(17.dp)
+                                        if (isLibraryTab) {
+                                            MulberryExpressiveLogo(
+                                                size = 20.dp,
+                                                showContainer = false
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = if (isFirst) config.tab.filledIcon else config.tab.regularIcon,
+                                                contentDescription = config.tab.title,
+                                                tint = if (isFirst) colors.primary else colors.textSecondary,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+                                    }
+                                    if (!isLibraryTab) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = config.tab.title,
+                                            fontFamily = InterFamily,
+                                            fontWeight = if (isFirst) FontWeight.SemiBold else FontWeight.Normal,
+                                            fontSize = 10.sp,
+                                            color = if (isFirst) colors.primary else colors.textSecondary
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = config.tab.title,
-                                        fontFamily = InterFamily,
-                                        fontWeight = if (isFirst) FontWeight.SemiBold else FontWeight.Normal,
-                                        fontSize = 10.sp,
-                                        color = if (isFirst) colors.primary else colors.textSecondary
-                                    )
                                 }
                             }
                         }
@@ -386,12 +396,19 @@ fun CustomizeTabsSheet(
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (config.isVisible) config.tab.filledIcon else config.tab.regularIcon,
-                                        contentDescription = null,
-                                        tint = if (config.isVisible) colors.primary else colors.textMuted,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    if (isLibrary) {
+                                        MulberryExpressiveLogo(
+                                            size = 22.dp,
+                                            showContainer = false
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = if (config.isVisible) config.tab.filledIcon else config.tab.regularIcon,
+                                            contentDescription = null,
+                                            tint = if (config.isVisible) colors.primary else colors.textMuted,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
 

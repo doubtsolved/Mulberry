@@ -54,6 +54,7 @@ class BookDownloadManager private constructor(
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
     private val httpClient = OkHttpClient.Builder()
+        .dns(BookContributionManager.appDns)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()

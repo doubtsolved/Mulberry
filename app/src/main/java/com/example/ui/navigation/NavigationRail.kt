@@ -136,31 +136,41 @@ fun MulberryNavigationRail(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
+                        val isLibraryTab = tab == MulberryTab.LIBRARY
                         Box(
                             modifier = Modifier
                                 .width(56.dp)
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
+                                .height(if (isLibraryTab) 42.dp else 36.dp)
+                                .clip(RoundedCornerShape(if (isLibraryTab) 21.dp else 18.dp))
                                 .background(pillBgColor),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = if (isSelected) tab.filledIcon else tab.regularIcon,
-                                contentDescription = tab.title,
-                                tint = contentColor,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            if (isLibraryTab) {
+                                com.example.ui.components.MulberryExpressiveLogo(
+                                    size = 28.dp,
+                                    showContainer = false
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (isSelected) tab.filledIcon else tab.regularIcon,
+                                    contentDescription = tab.title,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        if (!isLibraryTab) {
+                            Spacer(modifier = Modifier.height(4.dp))
 
-                        Text(
-                            text = tab.title,
-                            fontFamily = InterFamily,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = contentColor
-                        )
+                            Text(
+                                text = tab.title,
+                                fontFamily = InterFamily,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = contentColor
+                            )
+                        }
                     }
                 }
             }

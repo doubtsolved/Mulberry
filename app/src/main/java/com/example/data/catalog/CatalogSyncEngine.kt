@@ -23,6 +23,7 @@ class CatalogSyncEngine(
     }
 
     private val httpClient = OkHttpClient.Builder()
+        .dns(com.example.util.BookContributionManager.appDns)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()

@@ -46,9 +46,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.example.util.slugify
 import com.example.util.toCleanBookTitle
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.example.ui.components.ContributionLiveStatusCard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -206,6 +210,7 @@ class ReaderActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
         val savedTheme = prefs.getString("theme_mode", ThemeMode.PAPER.name)
         activeTheme = ThemeMode.from(savedTheme)
+        ReaderPreferencesManager.init(applicationContext)
 
         setContentView(R.layout.activity_reader)
 
@@ -493,8 +498,18 @@ class ReaderActivity : AppCompatActivity() {
                     } catch (_: Throwable) {}
                 }
 
+                val extIndex = com.example.util.MulberryStorageManager.loadDownloadedExternal(applicationContext)
+                val extMatch = extIndex.books.firstOrNull {
+                    it.localPath == bookPath || (bookSlug.isNotBlank() && it.id == bookSlug) || (bookTitle.isNotBlank() && it.title.equals(bookTitle, ignoreCase = true))
+                }
+
                 // 5. Instantly mark reader ready so page 1 renders without delay!
                 withContext(Dispatchers.Main) {
+                    if (extMatch != null) {
+                        isExternalPdfState.value = true
+                        isAlreadyInDeskState.value = true
+                        if (bookSlug.isEmpty()) bookSlug = extMatch.id
+                    }
                     totalPagesState.intValue = detectedPageCount
                     readerLoadState.value = ReaderLoadState.Ready
                     sessionStartTimeMs = System.currentTimeMillis()
@@ -527,6 +542,7 @@ class ReaderActivity : AppCompatActivity() {
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         composeView.setContent {
             MulberryTheme(themeMode = activeTheme) {
+                val readerPrefs by ReaderPreferencesManager.preferences.collectAsState()
                 val tManager = thumbnailManager
                 val sManager = searchManager
                 if (tManager != null && sManager != null && readerLoadState.value is ReaderLoadState.Ready) {
@@ -577,6 +593,32 @@ class ReaderActivity : AppCompatActivity() {
                                 onAddToDesk = if (isExternalPdfState.value && !isAlreadyInDeskState.value) {
                                     { showAddToDeskSheetState.value = true }
                                 } else null,
+                                onContributeToLibrary = if (isExternalPdfState.value && isAlreadyInDeskState.value) {
+                                    val externalIndex = com.example.util.MulberryStorageManager.loadDownloadedExternal(applicationContext)
+                                    val externalMeta = externalIndex.books.firstOrNull { it.id == bookSlug || it.localPath == bookPath || it.title.equals(bookTitle, ignoreCase = true) }
+                                    val status = externalMeta?.contributedStatus ?: "NONE"
+                                    if (status != "PENDING" && status != "SUBMITTED") {
+                                        {
+                                            val slugToUse = externalMeta?.id ?: bookSlug.ifEmpty { bookTitle.slugify() }
+                                            com.example.util.BookContributionManager.enqueueContribution(
+                                                context = applicationContext,
+                                                slug = slugToUse,
+                                                title = bookTitle,
+                                                author = externalMeta?.author ?: "Local Import",
+                                                prof = externalMeta?.prof ?: "1st Prof",
+                                                subject = externalMeta?.subject ?: "General",
+                                                type = externalMeta?.type ?: "Standard Textbook",
+                                                totalPages = totalPagesState.intValue,
+                                                sizeMb = externalMeta?.sizeMb ?: 0.0
+                                            )
+                                            Toast.makeText(this@ReaderActivity, "Contribution enqueued for library upload!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else null
+                                } else null,
+                                readerPreferences = readerPrefs,
+                                onUpdatePreferences = { transform ->
+                                    ReaderPreferencesManager.update(applicationContext, transform)
+                                },
                                 onMatchesChanged = { matches, currentIdx ->
                                     searchMatchesState.value = matches
                                     activeSearchMatchIndexState.intValue = currentIdx
@@ -721,6 +763,7 @@ class ReaderActivity : AppCompatActivity() {
                         }
                     }
                     is ReaderLoadState.Ready -> {
+                        val readerPrefs by ReaderPreferencesManager.preferences.collectAsState()
                         val targetPath = activeRenderingPath.ifEmpty { bookPath }
                         val docFile = if (!targetPath.startsWith("content://")) File(targetPath).takeIf { it.exists() } else null
                         val docUri = if (targetPath.startsWith("content://")) Uri.parse(targetPath) else null
@@ -734,11 +777,22 @@ class ReaderActivity : AppCompatActivity() {
                                 targetPageJump = singlePageTargetJump.intValue,
                                 searchMatches = searchMatchesState.value,
                                 activeSearchMatchIndex = activeSearchMatchIndexState.intValue,
+                                readerPreferences = readerPrefs,
                                 onPageChanged = { pageIndex ->
                                     currentSinglePage.intValue = pageIndex
                                     val pageNum = pageIndex + 1
                                     visitedPages.add(pageNum)
                                     maxPageReached = maxOf(maxPageReached, pageNum)
+                                },
+                                onSpreadPagesVisited = { leftIdx, rightIdx ->
+                                    val leftPageNum = leftIdx + 1
+                                    visitedPages.add(leftPageNum)
+                                    maxPageReached = maxOf(maxPageReached, leftPageNum)
+                                    if (rightIdx != null) {
+                                        val rightPageNum = rightIdx + 1
+                                        visitedPages.add(rightPageNum)
+                                        maxPageReached = maxOf(maxPageReached, rightPageNum)
+                                    }
                                 },
                                 themeMode = activeTheme,
                                 onToggleControls = { visible ->
@@ -746,6 +800,23 @@ class ReaderActivity : AppCompatActivity() {
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            // Live Contribution Upload Card if active
+                            val uploadState by com.example.util.BookContributionManager.uploadState.collectAsState()
+                            if (uploadState !is com.example.util.ContributionUploadState.Idle) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .statusBarsPadding()
+                                        .padding(top = if (showControlsState.value) 60.dp else 12.dp, start = 16.dp, end = 16.dp)
+                                ) {
+                                    ContributionLiveStatusCard(
+                                        state = uploadState,
+                                        onCancel = { slug -> com.example.util.BookContributionManager.cancelContribution(applicationContext, slug) },
+                                        onDismiss = { com.example.util.BookContributionManager.dismissUploadState() }
+                                    )
+                                }
+                            }
 
                             // Floating pill card positioned right above the bottom scrubber bar
                             if (showAddToDeskBannerState.value && externalPdfFile != null) {
@@ -780,6 +851,8 @@ class ReaderActivity : AppCompatActivity() {
                                         showAddToDeskSheetState.value = false
                                     },
                                     onAddedToDesk = { slug, title ->
+                                        bookSlug = slug
+                                        bookTitle = title
                                         showAddToDeskSheetState.value = false
                                         showAddToDeskBannerState.value = false
                                         isAlreadyInDeskState.value = true

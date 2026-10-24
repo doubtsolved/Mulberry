@@ -11,7 +11,10 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -37,12 +41,18 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -56,12 +66,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -97,11 +111,16 @@ fun ReaderTopBarScreen(
     onShare: () -> Unit,
     onFeedback: () -> Unit,
     onAddToDesk: (() -> Unit)? = null,
+    onContributeToLibrary: (() -> Unit)? = null,
+    readerPreferences: ReaderPreferences = ReaderPreferences(),
+    onUpdatePreferences: ((ReaderPreferences) -> ReaderPreferences) -> Unit = {},
     onMatchesChanged: (List<SearchMatch>, Int) -> Unit = { _, _ -> }
 ) {
+    val context = LocalContext.current
     val colors = LocalMulberryColors.current
     var showThumbnailSheet by remember { mutableStateOf(false) }
     var showTocSheet by remember { mutableStateOf(false) }
+    var showEyeRelaxSheet by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showDocInfoDialog by remember { mutableStateOf(false) }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -118,6 +137,7 @@ fun ReaderTopBarScreen(
     // 2-state thumbnail bottom sheet
     val thumbnailSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tocSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val eyeRelaxSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val moreSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
 
@@ -195,55 +215,119 @@ fun ReaderTopBarScreen(
                                 .padding(horizontal = 8.dp)
                         )
 
+                        // Action 0A: Eye Relax (Warm Night Light & Dimming)
+                        IconButton(
+                            onClick = { showEyeRelaxSheet = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("reader_eye_relax_button")
+                        ) {
+                            Icon(
+                                imageVector = if (readerPreferences.eyeRelaxEnabled) FluentIcons.Eye24Filled else FluentIcons.Eye24Regular,
+                                contentDescription = "Eye Relax Calibration",
+                                tint = if (readerPreferences.eyeRelaxEnabled) Color(0xFFF59E0B) else colors.textPrimary,
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
+
+                        // Action 0B: Dual-Page Spread Mode Cycle (Auto -> Single -> Dual)
+                        IconButton(
+                            onClick = {
+                                val nextMode = readerPreferences.dualPageMode.next()
+                                onUpdatePreferences { it.copy(dualPageMode = nextMode) }
+                                Toast.makeText(context, "Spread: ${nextMode.label}", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("reader_spread_mode_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                val spreadIcon = when (readerPreferences.dualPageMode) {
+                                    DualPageMode.FORCE_SINGLE -> FluentIcons.PageSingle24Regular
+                                    DualPageMode.AUTO, DualPageMode.FORCE_DUAL -> FluentIcons.DualScreen24Regular
+                                }
+                                Icon(
+                                    imageVector = spreadIcon,
+                                    contentDescription = "Cycle Page Spread Mode (${readerPreferences.dualPageMode.label})",
+                                    tint = if (readerPreferences.dualPageMode == DualPageMode.FORCE_DUAL) colors.primary else colors.textPrimary,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                                val modeTag = when (readerPreferences.dualPageMode) {
+                                    DualPageMode.AUTO -> "A"
+                                    DualPageMode.FORCE_SINGLE -> "1"
+                                    DualPageMode.FORCE_DUAL -> "2"
+                                }
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (readerPreferences.dualPageMode == DualPageMode.FORCE_DUAL) colors.primary else colors.surfaceCard,
+                                    border = BorderStroke(0.5.dp, colors.borderSubtle),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(13.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = modeTag,
+                                            fontFamily = InterFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 8.sp,
+                                            lineHeight = 9.sp,
+                                            color = if (readerPreferences.dualPageMode == DualPageMode.FORCE_DUAL) colors.onPrimary else colors.textPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Action 1: Broad View (Page Thumbnail Grid)
                         IconButton(
                             onClick = { showThumbnailSheet = true },
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.Grid24Regular,
                                 contentDescription = "Page Thumbnails Overview",
                                 tint = colors.textPrimary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(21.dp)
                             )
                         }
 
                         // Action 2: In-Document Search (triggers transformation)
                         IconButton(
                             onClick = { isSearchActive = true },
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.Search24Regular,
                                 contentDescription = "Search in Document",
                                 tint = colors.textPrimary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(21.dp)
                             )
                         }
 
                         // Action 3: Table of Contents
                         IconButton(
                             onClick = { showTocSheet = true },
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.Toc24Regular,
                                 contentDescription = "Table of Contents",
                                 tint = colors.textPrimary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(21.dp)
                             )
                         }
 
                         // Action 4: More Options
                         IconButton(
                             onClick = { showMoreMenu = true },
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.MoreVertical24Regular,
                                 contentDescription = "More Options",
                                 tint = colors.textPrimary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(21.dp)
                             )
                         }
                     }
@@ -402,7 +486,33 @@ fun ReaderTopBarScreen(
                             action()
                         }
                     }
+                },
+                onContributeToLibrary = onContributeToLibrary?.let { action ->
+                    {
+                        coroutineScope.launch {
+                            moreSheetState.hide()
+                            showMoreMenu = false
+                            action()
+                        }
+                    }
                 }
+            )
+        }
+    }
+
+    // Compose Eye Relax & Spread Settings ModalBottomSheet
+    if (showEyeRelaxSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showEyeRelaxSheet = false },
+            sheetState = eyeRelaxSheetState,
+            containerColor = colors.surface,
+            contentColor = colors.textPrimary,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            modifier = Modifier.testTag("eye_relax_bottom_sheet")
+        ) {
+            EyeRelaxSheetContent(
+                preferences = readerPreferences,
+                onUpdatePreferences = onUpdatePreferences
             )
         }
     }
@@ -857,7 +967,8 @@ fun ReaderMoreMenuContent(
     onShare: () -> Unit,
     onDocumentInfo: () -> Unit,
     onFeedback: () -> Unit,
-    onAddToDesk: (() -> Unit)? = null
+    onAddToDesk: (() -> Unit)? = null,
+    onContributeToLibrary: (() -> Unit)? = null
 ) {
     val colors = LocalMulberryColors.current
 
@@ -893,6 +1004,14 @@ fun ReaderMoreMenuContent(
                 icon = FluentIcons.ArrowDownload24Regular,
                 label = "Add to Desk",
                 onClick = onAddToDesk
+            )
+        }
+
+        if (onContributeToLibrary != null) {
+            SingleLineMenuItem(
+                icon = FluentIcons.ArrowUpload24Regular,
+                label = "Contribute to Community Library",
+                onClick = onContributeToLibrary
             )
         }
 
@@ -1038,3 +1157,295 @@ private fun DocInfoRow(label: String, value: String) {
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EyeRelaxSheetContent(
+    preferences: ReaderPreferences,
+    onUpdatePreferences: ((ReaderPreferences) -> ReaderPreferences) -> Unit
+) {
+    val colors = LocalMulberryColors.current
+    val amberAccent = Color(0xFFF59E0B)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .padding(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Master Toggle Row: "Eye Relax"
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(1.dp, if (preferences.eyeRelaxEnabled) amberAccent.copy(alpha = 0.45f) else colors.borderSubtle),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (preferences.eyeRelaxEnabled) amberAccent.copy(alpha = 0.16f) else colors.surfaceTint,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (preferences.eyeRelaxEnabled) FluentIcons.Eye24Filled else FluentIcons.Eye24Regular,
+                                contentDescription = null,
+                                tint = if (preferences.eyeRelaxEnabled) amberAccent else colors.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = "Eye Relax",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "Warm night light & extra software dimming",
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = preferences.eyeRelaxEnabled,
+                    onCheckedChange = { enabled ->
+                        onUpdatePreferences { it.copy(eyeRelaxEnabled = enabled) }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = amberAccent,
+                        uncheckedThumbColor = colors.textSecondary,
+                        uncheckedTrackColor = colors.surface
+                    ),
+                    modifier = Modifier.testTag("eye_relax_switch")
+                )
+            }
+        }
+
+        // Slider 1: Warmth (Blue Light Filter) with Amber Gradient Track
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.WeatherSunny24Regular,
+                        contentDescription = null,
+                        tint = amberAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Warmth (Blue Light Filter)",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        color = colors.textPrimary
+                    )
+                }
+                Text(
+                    text = "${(preferences.eyeRelaxWarmth * 100).toInt()}%",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
+                    color = amberAccent
+                )
+            }
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Amber gradient backdrop bar under the slider track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFFFEF3C7),
+                                    Color(0xFFFBBF24),
+                                    Color(0xFFD97706)
+                                )
+                            )
+                        )
+                        .border(0.5.dp, colors.borderSubtle, RoundedCornerShape(4.dp))
+                )
+
+                Slider(
+                    value = preferences.eyeRelaxWarmth,
+                    valueRange = 0.0f..1.0f,
+                    onValueChange = { newWarmth ->
+                        onUpdatePreferences {
+                            it.copy(
+                                eyeRelaxEnabled = true,
+                                eyeRelaxWarmth = newWarmth
+                            )
+                        }
+                    },
+                    colors = SliderDefaults.colors(
+                        thumbColor = amberAccent,
+                        activeTrackColor = Color.Transparent,
+                        inactiveTrackColor = Color.Transparent
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("eye_relax_warmth_slider")
+                )
+            }
+        }
+
+        // Slider 2: Night Dimmer (soft luminance reduction, 0.0f .. 0.60f)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.WeatherMoon24Regular,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Night Dimmer",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        color = colors.textPrimary
+                    )
+                }
+                Text(
+                    text = "${((preferences.eyeRelaxDim / 0.60f) * 100).toInt().coerceIn(0, 100)}%",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
+                    color = colors.primary
+                )
+            }
+
+            Slider(
+                value = preferences.eyeRelaxDim,
+                valueRange = 0.0f..0.60f,
+                onValueChange = { newDim ->
+                    onUpdatePreferences {
+                        it.copy(
+                            eyeRelaxEnabled = true,
+                            eyeRelaxDim = newDim
+                        )
+                    }
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = colors.primary,
+                    activeTrackColor = colors.primary,
+                    inactiveTrackColor = colors.borderSubtle
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("eye_relax_dim_slider")
+            )
+        }
+
+        // Toggle Chips Row: Grayscale / E-Ink Mode + First Page is Cover
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = preferences.eyeRelaxGrayscale,
+                onClick = {
+                    onUpdatePreferences {
+                        it.copy(
+                            eyeRelaxEnabled = true,
+                            eyeRelaxGrayscale = !it.eyeRelaxGrayscale
+                        )
+                    }
+                },
+                label = {
+                    Text(
+                        text = "Grayscale / E-Ink Mode",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.5.sp
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = FluentIcons.DarkTheme24Regular,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = colors.primary.copy(alpha = 0.16f),
+                    selectedLabelColor = colors.primary,
+                    selectedLeadingIconColor = colors.primary
+                ),
+                modifier = Modifier.testTag("eye_relax_grayscale_chip")
+            )
+
+            FilterChip(
+                selected = preferences.firstPageIsCover,
+                onClick = {
+                    onUpdatePreferences {
+                        it.copy(firstPageIsCover = !it.firstPageIsCover)
+                    }
+                },
+                label = {
+                    Text(
+                        text = "Cover Page Alone",
+                        fontFamily = InterFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.5.sp
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = FluentIcons.BookOpen24Regular,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = colors.primary.copy(alpha = 0.16f),
+                    selectedLabelColor = colors.primary,
+                    selectedLeadingIconColor = colors.primary
+                ),
+                modifier = Modifier.testTag("first_page_cover_chip")
+            )
+        }
+    }
+}
+

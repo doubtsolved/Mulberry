@@ -1,5 +1,7 @@
 package com.example.ui.reader
 
+import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -7,9 +9,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
-import android.content.Intent
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
@@ -30,11 +30,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,18 +66,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
+import androidx.core.content.FileProvider
 import com.example.ui.components.FluentIcons
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
@@ -89,13 +95,22 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
+private enum class SpreadHalf {
+    FULL,
+    LEFT,
+    RIGHT
+}
+
 /**
- * Single-Page Mode reader powered by Android's native PdfRenderer and Jetpack Compose HorizontalPager.
+ * Single-Page & Dual-Page Spread PDF Reader powered by Android's native PdfRenderer and Jetpack Compose HorizontalPager.
  * Features:
+ * - Eye Relax GPU ColorMatrix calibration overlay (warmth blue-light filter, software night dimmer, E-Ink grayscale)
+ * - Adaptive & manual Dual-Page Book Spread for tablets, foldables, and landscape orientation
+ * - Cover-page aware spread indexing with 1.dp book gutter divider and blank opposite page for odd trailing pages
  * - Conditional gesture routing (swipes smoothly at scale <= 1.05f; pans/zooms when scale > 1.05f)
- * - Animated double-tap zoom centered on coordinate
- * - One-handed tap zones: left 20% previous page, right 20% next page, middle 60% overlay toggle
- * - Floating Page Scrubber Bar with Slider, Prev/Next buttons, and Page Badge
+ * - Animated double-tap 2.5x zoom inspecting the tapped page (left or right)
+ * - One-handed tap zones: left 20% previous spread, right 20% next spread, middle 60% overlay toggle
+ * - Floating Page Scrubber Bar displaying single or dual spread page range (e.g., "Page 142–143 / 1150")
  */
 @Composable
 fun SinglePagePdfViewer(
@@ -106,7 +121,9 @@ fun SinglePagePdfViewer(
     targetPageJump: Int = -1,
     searchMatches: List<SearchMatch> = emptyList(),
     activeSearchMatchIndex: Int = -1,
+    readerPreferences: ReaderPreferences = ReaderPreferences(),
     onPageChanged: (Int) -> Unit = {},
+    onSpreadPagesVisited: (Int, Int?) -> Unit = { _, _ -> },
     themeMode: ThemeMode = ThemeMode.LIGHT,
     onTap: (() -> Unit)? = null,
     onToggleControls: ((Boolean) -> Unit)? = null,
@@ -114,6 +131,7 @@ fun SinglePagePdfViewer(
 ) {
     val context = LocalContext.current
     val colors = LocalMulberryColors.current
+    val configuration = LocalConfiguration.current
     val coroutineScope = rememberCoroutineScope()
 
     var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
@@ -121,15 +139,49 @@ fun SinglePagePdfViewer(
     var isCurrentPageZoomed by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
 
+    // Track logical 0-based page index so mode/orientation changes preserve the exact reading spot
+    var activeAnchorPageIndex by remember { mutableIntStateOf(initialPage.coerceAtLeast(0)) }
+
     val hapticFeedback = LocalHapticFeedback.current
     var circleSearchCoords by remember { mutableStateOf<Offset?>(null) }
 
     // Synchronize access to PdfRenderer (Android allows only one open page at a time)
     val rendererMutex = remember { Mutex() }
 
-    // Memory cache for rendered page bitmaps (retains up to 8 pages)
+    // Memory cache for rendered page bitmaps (retains up to 12 pages for smooth dual-page spreads)
     val pageCache = remember {
-        object : LruCache<Int, Bitmap>(8) {}
+        object : LruCache<Int, Bitmap>(12) {}
+    }
+
+    // Detect wide screens (tablets, foldables, or landscape orientation)
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
+    val isDualPageActive = when (readerPreferences.dualPageMode) {
+        DualPageMode.AUTO -> isWideScreen && pageCount > 1
+        DualPageMode.FORCE_SINGLE -> false
+        DualPageMode.FORCE_DUAL -> pageCount > 1
+    }
+
+    val spreadCount = remember(pageCount, isDualPageActive, readerPreferences.firstPageIsCover) {
+        DualSpreadCalculator.getSpreadCount(
+            totalPages = pageCount,
+            isDualActive = isDualPageActive,
+            firstPageIsCover = readerPreferences.firstPageIsCover
+        )
+    }
+
+    // Compute Eye Relax ColorFilter without re-rasterizing underlying bitmaps
+    val eyeRelaxColorFilter = remember(
+        readerPreferences.eyeRelaxEnabled,
+        readerPreferences.eyeRelaxWarmth,
+        readerPreferences.eyeRelaxDim,
+        readerPreferences.eyeRelaxGrayscale
+    ) {
+        if (readerPreferences.eyeRelaxEnabled) {
+            ColorFilter.colorMatrix(readerPreferences.computeColorMatrix())
+        } else {
+            null
+        }
     }
 
     fun shareHighDefinitionPage(pageIndex: Int) {
@@ -254,25 +306,98 @@ fun SinglePagePdfViewer(
         }
     }
 
-    val safeInitialPage = initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
-    val pagerState = rememberPagerState(initialPage = safeInitialPage) { pageCount }
+    val initialSpreadIndex = remember {
+        DualSpreadCalculator.pageIndexToSpreadIndex(
+            pageIndex = initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
+            totalPages = pageCount,
+            isDualActive = isDualPageActive,
+            firstPageIsCover = readerPreferences.firstPageIsCover
+        ).coerceIn(0, (spreadCount - 1).coerceAtLeast(0))
+    }
+
+    val pagerState = rememberPagerState(initialPage = initialSpreadIndex) { spreadCount }
+
+    // Keep current reading page anchored when switching between Single and Dual spread modes
+    LaunchedEffect(isDualPageActive, readerPreferences.firstPageIsCover, pageCount) {
+        val targetSpread = DualSpreadCalculator.pageIndexToSpreadIndex(
+            pageIndex = activeAnchorPageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
+            totalPages = pageCount,
+            isDualActive = isDualPageActive,
+            firstPageIsCover = readerPreferences.firstPageIsCover
+        ).coerceIn(0, (spreadCount - 1).coerceAtLeast(0))
+
+        if (targetSpread != pagerState.currentPage) {
+            pagerState.scrollToPage(targetSpread)
+        }
+    }
+
+    val currentSpread = remember(
+        pagerState.currentPage,
+        pageCount,
+        isDualPageActive,
+        readerPreferences.firstPageIsCover
+    ) {
+        DualSpreadCalculator.getSpreadForIndex(
+            spreadIndex = pagerState.currentPage,
+            totalPages = pageCount,
+            isDualActive = isDualPageActive,
+            firstPageIsCover = readerPreferences.firstPageIsCover
+        )
+    }
 
     // Report page changes to caller
-    LaunchedEffect(pagerState.currentPage) {
-        onPageChanged(pagerState.currentPage)
-        // Reset zoom state on page turn
+    LaunchedEffect(currentSpread.leftPageIndex, currentSpread.rightPageIndex) {
+        activeAnchorPageIndex = currentSpread.leftPageIndex
+        onPageChanged(currentSpread.leftPageIndex)
+        onSpreadPagesVisited(currentSpread.leftPageIndex, currentSpread.rightPageIndex)
+        // Reset zoom state on spread turn
         isCurrentPageZoomed = false
     }
 
     // Handle external jump requests (TOC, Search, Thumbnail Grid)
     LaunchedEffect(targetPageJump) {
-        if (targetPageJump in 0 until pageCount && targetPageJump != pagerState.currentPage) {
-            coroutineScope.launch {
-                if (kotlin.math.abs(targetPageJump - pagerState.currentPage) > 3) {
-                    pagerState.scrollToPage(targetPageJump)
-                } else {
-                    pagerState.animateScrollToPage(targetPageJump)
+        if (targetPageJump in 0 until pageCount) {
+            activeAnchorPageIndex = targetPageJump
+            val targetSpread = DualSpreadCalculator.pageIndexToSpreadIndex(
+                pageIndex = targetPageJump,
+                totalPages = pageCount,
+                isDualActive = isDualPageActive,
+                firstPageIsCover = readerPreferences.firstPageIsCover
+            ).coerceIn(0, (spreadCount - 1).coerceAtLeast(0))
+
+            if (targetSpread != pagerState.currentPage) {
+                coroutineScope.launch {
+                    if (kotlin.math.abs(targetSpread - pagerState.currentPage) > 3) {
+                        pagerState.scrollToPage(targetSpread)
+                    } else {
+                        pagerState.animateScrollToPage(targetSpread)
+                    }
                 }
+            }
+        }
+    }
+
+    fun handleSpreadTapZone(screenXFraction: Float) {
+        when {
+            // Left 20% of screen: Navigate back 1 spread
+            screenXFraction < 0.20f -> {
+                coroutineScope.launch {
+                    val prev = (pagerState.currentPage - 1).coerceAtLeast(0)
+                    pagerState.animateScrollToPage(prev)
+                }
+            }
+            // Right 20% of screen: Navigate forward 1 spread
+            screenXFraction > 0.80f -> {
+                coroutineScope.launch {
+                    val next = (pagerState.currentPage + 1).coerceAtMost(spreadCount - 1)
+                    pagerState.animateScrollToPage(next)
+                }
+            }
+            // Middle 60% of screen: Toggle overlays & system bars
+            else -> {
+                showControls = !showControls
+                onToggleControls?.invoke(showControls)
+                onTap?.invoke()
             }
         }
     }
@@ -319,57 +444,157 @@ fun SinglePagePdfViewer(
                 )
             }
         } else {
-            // Horizontal Pager: user scrolling enabled when not zoomed in
+            // Horizontal Pager over spreads, with Eye Relax GPU ColorMatrix applied over the viewport
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = !isCurrentPageZoomed,
                 beyondViewportPageCount = 1,
-                modifier = Modifier.fillMaxSize()
-            ) { pageIndex ->
-                SinglePdfPageItem(
-                    pageIndex = pageIndex,
-                    renderer = pdfRenderer,
-                    rendererMutex = rendererMutex,
-                    pageCache = pageCache,
-                    isCurrentPage = pageIndex == pagerState.currentPage,
-                    searchMatches = searchMatches,
-                    activeSearchMatchIndex = activeSearchMatchIndex,
-                    onZoomStateChanged = { zoomed ->
-                        if (pageIndex == pagerState.currentPage) {
-                            isCurrentPageZoomed = zoomed
-                        }
-                    },
-                    onTapZone = { xFraction ->
-                        when {
-                            // Left 20% of screen: Navigate to Previous Page
-                            xFraction < 0.20f -> {
-                                coroutineScope.launch {
-                                    val prev = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                    pagerState.animateScrollToPage(prev)
-                                }
-                            }
-                            // Right 20% of screen: Navigate to Next Page
-                            xFraction > 0.80f -> {
-                                coroutineScope.launch {
-                                    val next = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
-                                    pagerState.animateScrollToPage(next)
-                                }
-                            }
-                            // Middle 60% of screen: Toggle overlays & system bars
-                            else -> {
-                                showControls = !showControls
-                                onToggleControls?.invoke(showControls)
-                                onTap?.invoke()
-                            }
-                        }
-                    },
-                    onLongPressCircleToSearch = { pressOffset, pageBitmap ->
-                        triggerCircleToSearch(pressOffset, pageBitmap, pageIndex)
-                    }
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("pdf_spread_pager")
+            ) { spreadIndex ->
+                val spread = DualSpreadCalculator.getSpreadForIndex(
+                    spreadIndex = spreadIndex,
+                    totalPages = pageCount,
+                    isDualActive = isDualPageActive,
+                    firstPageIsCover = readerPreferences.firstPageIsCover
                 )
+                val isCurrentSpread = spreadIndex == pagerState.currentPage
+
+                if (!isDualPageActive || spread.isSingleCenteredCover) {
+                    // Single page or centered Cover Page (Spread 0 when firstPageIsCover == true)
+                    SinglePdfPageItem(
+                        pageIndex = spread.leftPageIndex,
+                        renderer = pdfRenderer,
+                        rendererMutex = rendererMutex,
+                        pageCache = pageCache,
+                        isCurrentPage = isCurrentSpread,
+                        spreadHalf = SpreadHalf.FULL,
+                        eyeRelaxColorFilter = eyeRelaxColorFilter,
+                        searchMatches = searchMatches,
+                        activeSearchMatchIndex = activeSearchMatchIndex,
+                        onZoomStateChanged = { zoomed ->
+                            if (isCurrentSpread) {
+                                isCurrentPageZoomed = zoomed
+                            }
+                        },
+                        onTapZone = { xFraction ->
+                            handleSpreadTapZone(xFraction)
+                        },
+                        onLongPressCircleToSearch = { pressOffset, pageBitmap ->
+                            triggerCircleToSearch(pressOffset, pageBitmap, spread.leftPageIndex)
+                        }
+                    )
+                } else {
+                    // Dual-Page Spread Row with 1.dp book gutter divider
+                    var leftZoomed by remember(spreadIndex) { mutableStateOf(false) }
+                    var rightZoomed by remember(spreadIndex) { mutableStateOf(false) }
+
+                    LaunchedEffect(leftZoomed, rightZoomed, isCurrentSpread) {
+                        if (isCurrentSpread) {
+                            isCurrentPageZoomed = leftZoomed || rightZoomed
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("dual_page_spread_row"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left Page Half
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .zIndex(if (leftZoomed) 2f else 1f)
+                        ) {
+                            SinglePdfPageItem(
+                                pageIndex = spread.leftPageIndex,
+                                renderer = pdfRenderer,
+                                rendererMutex = rendererMutex,
+                                pageCache = pageCache,
+                                isCurrentPage = isCurrentSpread && !rightZoomed,
+                                spreadHalf = SpreadHalf.LEFT,
+                                eyeRelaxColorFilter = eyeRelaxColorFilter,
+                                searchMatches = searchMatches,
+                                activeSearchMatchIndex = activeSearchMatchIndex,
+                                onZoomStateChanged = { zoomed ->
+                                    leftZoomed = zoomed
+                                    if (zoomed) rightZoomed = false
+                                },
+                                onTapZone = { localXFraction ->
+                                    // Map left half [0..1] to full screen [0..0.5]
+                                    handleSpreadTapZone(localXFraction * 0.5f)
+                                },
+                                onLongPressCircleToSearch = { pressOffset, pageBitmap ->
+                                    triggerCircleToSearch(pressOffset, pageBitmap, spread.leftPageIndex)
+                                }
+                            )
+                        }
+
+                        // Subtle 1.dp book gutter divider (surfaceBorder)
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(colors.borderSubtle)
+                                .testTag("dual_page_gutter_divider")
+                        )
+
+                        // Right Page Half (or blank surface if final odd page)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .zIndex(if (rightZoomed) 2f else 1f)
+                        ) {
+                            if (spread.rightPageIndex != null) {
+                                SinglePdfPageItem(
+                                    pageIndex = spread.rightPageIndex,
+                                    renderer = pdfRenderer,
+                                    rendererMutex = rendererMutex,
+                                    pageCache = pageCache,
+                                    isCurrentPage = isCurrentSpread && !leftZoomed,
+                                    spreadHalf = SpreadHalf.RIGHT,
+                                    eyeRelaxColorFilter = eyeRelaxColorFilter,
+                                    searchMatches = searchMatches,
+                                    activeSearchMatchIndex = activeSearchMatchIndex,
+                                    onZoomStateChanged = { zoomed ->
+                                        rightZoomed = zoomed
+                                        if (zoomed) leftZoomed = false
+                                    },
+                                    onTapZone = { localXFraction ->
+                                        // Map right half [0..1] to full screen [0.5..1.0]
+                                        handleSpreadTapZone(0.5f + localXFraction * 0.5f)
+                                    },
+                                    onLongPressCircleToSearch = { pressOffset, pageBitmap ->
+                                        triggerCircleToSearch(pressOffset, pageBitmap, spread.rightPageIndex)
+                                    }
+                                )
+                            } else {
+                                // Final odd page in dual mode: right page space blank with theme surface background
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(colors.surface)
+                                        .pointerInput(spreadIndex) {
+                                            detectTapGestures(
+                                                onTap = { tapOffset ->
+                                                    val localXFraction = tapOffset.x / size.width.toFloat().coerceAtLeast(1f)
+                                                    handleSpreadTapZone(0.5f + localXFraction * 0.5f)
+                                                }
+                                            )
+                                        }
+                                        .testTag("dual_page_blank_trailing_slot")
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // Floating Page Scrubber Bar (Single-Page Mode) - sleek spring slide and fade animation
+            // Floating Page Scrubber Bar - sleek spring slide and fade animation
             AnimatedVisibility(
                 visible = showControls,
                 enter = slideInVertically(
@@ -405,7 +630,7 @@ fun SinglePagePdfViewer(
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Previous Page IconButton
+                        // Previous Spread / Page IconButton
                         IconButton(
                             onClick = {
                                 coroutineScope.launch {
@@ -424,14 +649,14 @@ fun SinglePagePdfViewer(
                             )
                         }
 
-                        // Material 3 Slider for scrubbing
-                        val maxRange = (pageCount - 1).coerceAtLeast(1).toFloat()
+                        // Material 3 Slider for scrubbing across spreads
+                        val maxRange = (spreadCount - 1).coerceAtLeast(1).toFloat()
                         Slider(
                             value = pagerState.currentPage.toFloat().coerceIn(0f, maxRange),
                             valueRange = 0f..maxRange,
                             onValueChange = { target ->
                                 coroutineScope.launch {
-                                    pagerState.scrollToPage(target.toInt().coerceIn(0, pageCount - 1))
+                                    pagerState.scrollToPage(target.toInt().coerceIn(0, spreadCount - 1))
                                 }
                             },
                             colors = SliderDefaults.colors(
@@ -444,35 +669,43 @@ fun SinglePagePdfViewer(
                                 .padding(horizontal = 6.dp)
                         )
 
-                        // Next Page IconButton
+                        // Next Spread / Page IconButton
                         IconButton(
                             onClick = {
                                 coroutineScope.launch {
-                                    val next = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
+                                    val next = (pagerState.currentPage + 1).coerceAtMost(spreadCount - 1)
                                     pagerState.animateScrollToPage(next)
                                 }
                             },
-                            enabled = pagerState.currentPage < pageCount - 1,
+                            enabled = pagerState.currentPage < spreadCount - 1,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 imageVector = FluentIcons.ChevronRight24Regular,
                                 contentDescription = "Next Page",
-                                tint = if (pagerState.currentPage < pageCount - 1) colors.primary else colors.textMuted,
+                                tint = if (pagerState.currentPage < spreadCount - 1) colors.primary else colors.textMuted,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
 
                         Spacer(modifier = Modifier.width(4.dp))
 
-                        // Pill Badge: "${pagerState.currentPage + 1} / $totalPages"
+                        // Pill Badge: displays "Page 142–143 / 1150" in dual mode or "Page 142 / 1150" in single/cover mode
+                        val pageBadgeText = if (isDualPageActive && currentSpread.rightPageIndex != null) {
+                            "Page ${currentSpread.leftPageIndex + 1}–${currentSpread.rightPageIndex + 1} / $pageCount"
+                        } else {
+                            "Page ${currentSpread.leftPageIndex + 1} / $pageCount"
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = colors.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.padding(start = 2.dp)
+                            modifier = Modifier
+                                .padding(start = 2.dp)
+                                .testTag("reader_scrubber_page_badge")
                         ) {
                             Text(
-                                text = "${pagerState.currentPage + 1} / $pageCount",
+                                text = pageBadgeText,
                                 fontFamily = InterFamily,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
@@ -494,7 +727,7 @@ fun SinglePagePdfViewer(
                         // High-Definition Share Button at the very end of the scroll bar
                         IconButton(
                             onClick = {
-                                shareHighDefinitionPage(pagerState.currentPage)
+                                shareHighDefinitionPage(currentSpread.leftPageIndex)
                             },
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -523,8 +756,8 @@ fun SinglePagePdfViewer(
  * Individual Page Item with conditional gesture routing:
  * - Only consumes drag/pan when scale > 1.05f
  * - When scale <= 1.05f, touch events pass through unconsumed to HorizontalPager
- * - Double-tap smoothly animates zoom (1f <-> 2.5f)
- * - Single-tap checks 20% left / 60% center / 20% right zones
+ * - Double-tap smoothly animates zoom (1f <-> 2.5f) inspecting the tapped page (left, right, or single)
+ * - Single-tap checks 20% left / 60% center / 20% right zones across the spread
  * - Long-press activates Google Circle to Search
  */
 @Composable
@@ -534,6 +767,8 @@ private fun SinglePdfPageItem(
     rendererMutex: Mutex,
     pageCache: LruCache<Int, Bitmap>,
     isCurrentPage: Boolean,
+    spreadHalf: SpreadHalf = SpreadHalf.FULL,
+    eyeRelaxColorFilter: ColorFilter? = null,
     searchMatches: List<SearchMatch> = emptyList(),
     activeSearchMatchIndex: Int = -1,
     onZoomStateChanged: (Boolean) -> Unit,
@@ -550,10 +785,10 @@ private fun SinglePdfPageItem(
     }
 
     // Conditional Transform State
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember(pageIndex) { mutableFloatStateOf(1f) }
+    var offset by remember(pageIndex) { mutableStateOf(Offset.Zero) }
 
-    // Reset zoom when page is not the active page
+    // Reset zoom when page/spread is no longer active
     LaunchedEffect(isCurrentPage) {
         if (!isCurrentPage && scale != 1f) {
             scale = 1f
@@ -562,9 +797,15 @@ private fun SinglePdfPageItem(
         }
     }
 
+    val contentAlignment = when (spreadHalf) {
+        SpreadHalf.LEFT -> Alignment.CenterEnd
+        SpreadHalf.RIGHT -> Alignment.CenterStart
+        SpreadHalf.FULL -> Alignment.Center
+    }
+
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        contentAlignment = contentAlignment
     ) {
         val density = LocalDensity.current
         val containerWidthPx = with(density) { maxWidth.toPx() }.toInt().coerceAtLeast(1)
@@ -630,8 +871,8 @@ private fun SinglePdfPageItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // 1. Double-tap and tap zone detection
-                    .pointerInput(pageIndex) {
+                    // 1. Double-tap (2.5x zoom on tapped page) and tap zone detection
+                    .pointerInput(pageIndex, spreadHalf) {
                         detectTapGestures(
                             onDoubleTap = { tapOffset ->
                                 coroutineScope.launch {
@@ -647,7 +888,7 @@ private fun SinglePdfPageItem(
                                         offset = Offset.Zero
                                         onZoomStateChanged(false)
                                     } else {
-                                        // Animate zoom to 2.5f centered on tapped coordinate
+                                        // Animate zoom to 2.5f centered on tapped coordinate of this page
                                         val targetScale = 2.5f
                                         val centerX = size.width / 2f
                                         val centerY = size.height / 2f
@@ -672,7 +913,7 @@ private fun SinglePdfPageItem(
                             onTap = { tapOffset ->
                                 // Tap zones active when not zoomed in
                                 if (scale <= 1.05f) {
-                                    val xFraction = tapOffset.x / size.width.toFloat()
+                                    val xFraction = tapOffset.x / size.width.toFloat().coerceAtLeast(1f)
                                     onTapZone(xFraction)
                                 }
                             },
@@ -732,7 +973,7 @@ private fun SinglePdfPageItem(
                             }
                         }
                     },
-                contentAlignment = Alignment.Center
+                contentAlignment = contentAlignment
             ) {
                 Box(
                     modifier = Modifier
@@ -745,7 +986,8 @@ private fun SinglePdfPageItem(
                 ) {
                     Image(
                         bitmap = bitmap!!.asImageBitmap(),
-                        contentDescription = "Page ${pageIndex + 1}"
+                        contentDescription = "Page ${pageIndex + 1}",
+                        colorFilter = eyeRelaxColorFilter
                     )
 
                     // On-Page Visual Highlighting for search matches

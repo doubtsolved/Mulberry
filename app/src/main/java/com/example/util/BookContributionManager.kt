@@ -7,8 +7,78 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import okhttp3.ConnectionPool
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
+
+data class InitResponseDto(
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("needsUpload") val needsUpload: Boolean = true,
+    @SerializedName("uploadUrl") val uploadUrl: String? = null,
+    @SerializedName("uploadHeaders") val uploadHeaders: Map<String, String>? = null,
+    @SerializedName("oid") val oid: String? = null,
+    @SerializedName("sizeBytes") val sizeBytes: Long? = null,
+    @SerializedName("tier") val tier: String? = null
+)
+
+sealed class ContributionUploadState {
+    data object Idle : ContributionUploadState()
+    data class Uploading(
+        val slug: String,
+        val bookTitle: String,
+        val stage: String, // "Preparing SHA-256...", "Uploading to Vault...", "Finalizing..."
+        val progressPercent: Int,
+        val bytesUploaded: Long,
+        val totalBytes: Long
+    ) : ContributionUploadState()
+    data class Success(val slug: String, val bookTitle: String) : ContributionUploadState()
+    data class Error(val slug: String, val bookTitle: String, val errorMessage: String) : ContributionUploadState()
+}
 
 object BookContributionManager {
+
+    // Strictly system DNS - prevent custom DNS-over-HTTPS or interceptors from altering target URLs/paths
+    val customDns: Dns = Dns.SYSTEM
+
+    // Retain appDns alias for compatibility across the codebase
+    val appDns: Dns = customDns
+
+    // HttpClient configured for Cloudflare Worker & AWS S3 streaming upload without stale pooled sockets
+    val contributionHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .dns(Dns.SYSTEM)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS)) // Do NOT reuse stale sockets across long uploads
+        .build()
+
+    private val _uploadState = MutableStateFlow<ContributionUploadState>(ContributionUploadState.Idle)
+    val uploadState: StateFlow<ContributionUploadState> = _uploadState.asStateFlow()
+
+    fun updateUploadState(state: ContributionUploadState) {
+        _uploadState.value = state
+    }
+
+    fun updateState(state: ContributionUploadState) = updateUploadState(state)
+
+    fun dismissUploadState() {
+        _uploadState.value = ContributionUploadState.Idle
+    }
+
+    fun cancelContribution(context: Context, slug: String) {
+        try {
+            val wm = WorkManager.getInstance(context.applicationContext)
+            wm.cancelUniqueWork("contribution_$slug")
+            wm.cancelUniqueWork("contrib_$slug")
+        } catch (_: Exception) {}
+        _uploadState.value = ContributionUploadState.Idle
+    }
 
     /**
      * Enqueues a background upload of an encrypted book to Hugging Face LFS S3
@@ -25,6 +95,16 @@ object BookContributionManager {
         totalPages: Int = 1,
         sizeMb: Double = 0.0
     ) {
+        val totalBytes = (sizeMb * 1024.0 * 1024.0).toLong().coerceAtLeast(0L)
+        _uploadState.value = ContributionUploadState.Uploading(
+            slug = slug,
+            bookTitle = title,
+            stage = "Enqueued for library upload...",
+            progressPercent = 0,
+            bytesUploaded = 0L,
+            totalBytes = totalBytes
+        )
+
         val inputData = workDataOf(
             BookContributionWorker.KEY_SLUG to slug,
             BookContributionWorker.KEY_TITLE to title,
@@ -48,7 +128,7 @@ object BookContributionManager {
 
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             "contribution_$slug",
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             request
         )
     }

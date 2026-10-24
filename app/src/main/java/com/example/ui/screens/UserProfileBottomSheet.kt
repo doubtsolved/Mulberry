@@ -86,6 +86,7 @@ private data class VipCodeResult(
 private suspend fun verifyVipCodeNetwork(code: String): Result<VipCodeResult> = withContext(Dispatchers.IO) {
     try {
         val client = OkHttpClient.Builder()
+            .dns(com.example.util.BookContributionManager.appDns)
             .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .build()
@@ -267,22 +268,12 @@ private fun ProfileOverviewContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = colors.primary.copy(alpha = 0.12f),
-                border = BorderStroke(1.5.dp, colors.primary.copy(alpha = 0.35f)),
-                modifier = Modifier.size(72.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = userProfile.displayName.take(1).ifEmpty { "S" }.uppercase(),
-                        fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp,
-                        color = colors.primary
-                    )
-                }
-            }
+            com.example.ui.components.MulberryProfileAvatar(
+                userProfile = userProfile,
+                size = 72.dp,
+                cornerRadius = 24.dp,
+                fontSize = 26.sp
+            )
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -323,14 +314,25 @@ private fun ProfileOverviewContent(
                             color = colors.primary.copy(alpha = 0.14f),
                             border = BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.35f))
                         ) {
-                            Text(
-                                text = "★ ${userProfile.vipBadgeLabel}",
-                                fontFamily = InterFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = colors.primary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.Star20Filled,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = userProfile.vipBadgeLabel,
+                                    fontFamily = InterFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = colors.primary
+                                )
+                            }
                         }
                     }
                 }

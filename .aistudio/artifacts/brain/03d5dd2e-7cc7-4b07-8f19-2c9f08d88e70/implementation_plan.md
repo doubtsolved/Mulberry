@@ -1,152 +1,77 @@
-# External PDF Ingestion, VIP Contributor Code & Community Contributions
+# Fix HTTP 408 Request Timeout on Book Contribution Finalize
 
-Enable Mulberry to act as a system PDF viewer with in-reader "Add to Desk" local encryption, add VIP student contributor verification via Cloudflare Worker, and support reliable background uploads of textbooks to the community library via direct Hugging Face LFS S3 uploads with Android WorkManager.
+Resolves the `HTTP 408 Request Timeout` occurring on `POST /api/contribute/finalize` after large S3 textbook uploads complete by isolating the contribution API client from stale pooled sockets and forcing a fresh TCP/TLS handshake on finalization.
 
----
-
-### User Review & Critical Decisions
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural decisions were confirmed during the interactive clarification phase:
+> The contribution pipeline performs a short `init` request to the Cloudflare Worker, followed by a multi-minute direct binary upload to S3, and then a `finalize` call back to the Cloudflare Worker (which in turn commits LFS pointers and metadata to Hugging Face Git, taking 15–25 seconds). Reusing an idle pooled socket across the long S3 upload causes Cloudflare edge to drop or time out the connection (`HTTP 408`).
 
-- **Confirmed Decision 1 (Upload Execution Model)**: Community textbook contributions will be scheduled and executed via **Android WorkManager** (`CoroutineWorker`) with a persistent progress notification (`ForegroundInfo`), ensuring uploads safely complete even if the user minimizes or closes Mulberry.
-- **Confirmed Decision 2 (VIP Contributor Badge Placement)**: The verified VIP Contributor Badge (e.g. *Core Architect*, *Verified Contributor*, or *Scholar*) will be rendered **beside the student's name in the Desk header**.
-
----
-
-### 1. Overview & Core Concept
-
-- **What It Does**:
-  1. **External PDF Handling & Ingestion**: Opens any external PDF from files, WhatsApp, or browsers, previews it instantly in `ReaderActivity`, and displays a non-intrusive floating pill card `[External PDF] <Title> • [+ Add to Desk]`. When tapped, it displays a metadata modal, creates an AES-256-GCM encrypted replica in `/sdcard/Mulberry/<slug>.bin`, generates a 150 DPI WebP cover, writes to `/sdcard/Mulberry/downloaded_external.json`, and registers it in Room `BookDao` so it appears in the Desk Shelf.
-  2. **VIP Contributor Code Verification**: Adds an expandable access code panel in the Student Profile. Validates codes via `POST https://mulberry-vault.sahabulmondal2023.workers.dev/api/verify-code` and grants tier privileges (`CORE_VIP`, `AMBASSADOR`, `STANDARD`) with dynamic daily upload limits and a custom badge.
-  3. **Community Contribution Pipeline**: Automatically computes SHA-256 and file size, checks rate limits via the Cloudflare Worker `/api/contribute/init`, streams large encrypted `.bin` files directly to Hugging Face LFS AWS S3 using presigned upload URLs with an 8 KB buffer, and commits metadata via `/api/contribute/finalize`.
-
-- **Target Audience**: Medical students importing uncataloged lecture notes, college handouts, or rare regional medical textbooks into Mulberry for offline study and sharing them with peers.
+- **Confirmed Decision 1 — Dedicated `contributionHttpClient` with Zero-Idle Connection Pool**: Configure `contributionHttpClient` with `connectTimeout(30, TimeUnit.SECONDS)`, `readTimeout(60, TimeUnit.SECONDS)`, `writeTimeout(60, TimeUnit.SECONDS)`, `retryOnConnectionFailure(true)`, and `connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))` so `init` and `finalize` never reuse stale sockets across long S3 uploads.
+- **Confirmed Decision 2 — Explicit `Connection: close` Header on Finalize**: Add `.addHeader("Connection", "close")` (alongside `Content-Type`, `X-Device-Id`, and `X-Vip-Code`) and use `.toRequestBody("application/json".toMediaType())` when constructing `finalizeRequest` to guarantee a fresh handshake at the Cloudflare edge.
+- **Confirmed Decision 3 — Explicit Finalize Status Verification**: Check `finalizeResponse.isSuccessful` and surface non-2xx responses (including HTTP 408/5xx) as a clear error state rather than silently marking failed finalizations as succeeded.
 
 ---
 
-### 2. User Experience & Visual Design
+## 1. Overview & Core Concept
 
-#### A. External PDF Viewport & Floating "Add to Desk" Banner
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Reader Top Bar:  [< Back]   External Document        [⋮]    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│                    [ PDF Page Viewport ]                    │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ 📄 External PDF • BD Chaurasia Anatomy  [+ Add to Desk]│  │
-│  └───────────────────────────────────────────────────────┘  │
-│  [==================== Scrubber Slider ====================]│
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### B. "Add to Desk" Bottom Sheet
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Add to Desk                                             [X] │
-│                                                             │
-│ Book Title                                                  │
-│ [ BD Chaurasia Human Anatomy                              ] │
-│                                                             │
-│ Professional Year                Subject                    │
-│ [ 1st Prof                   ▼]  [ Anatomy               ▼] │
-│                                                             │
-│ Asset Type                                                  │
-│ [ Standard Textbook                                       ▼]│
-│                                                             │
-│ [✓] Contribute to Mulberry Community Library                │
-│     Shares encrypted copy with verified medical peers       │
-│                                                             │
-│ [                  Import & Add to Desk                   ] │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### C. Desk Header with VIP Contributor Badge
-```
-┌─────────────────────────────────────────────────────────────┐
-│ [M] Desk                                              ( S ) │
-│ Dr. Sahabul  [ ★ Core Architect ]                           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### D. Profile VIP Access Code Section
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Special Contributor Access Code                             │
-│ Enter access code from community coordinators               │
-│ [ CORE-ARCHITECT-2026                      ] [ Verify Code ]│
-│ ✓ Verified: Core Architect (Unlimited Uploads)              │
-└─────────────────────────────────────────────────────────────┘
-```
+- **What It Does**: Eliminates socket reuse timeouts when finalizing community textbook contributions after 100% S3 upload completion.
+- **Target Audience / Persona**: Medical students and contributors uploading textbooks to the Mulberry Community Library over variable mobile or Wi-Fi connections.
+- **Key Value**: Ensures that once a user's textbook finishes uploading 100% to S3, the quarantine commit to Hugging Face completes reliably without failing at 98% with an `HTTP 408 Request Timeout`.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 2. User Experience & Visual Design
 
-- **Decision 1: WorkManager vs. In-Activity Coroutines for Uploads**:
-  - *Chosen Approach*: `androidx.work.CoroutineWorker` with `setForeground()` notification.
-  - *Why*: Large medical textbooks often range from 50 MB to 350 MB. Foreground activity coroutines risk termination when the system reclaims memory or the student switches apps. WorkManager guarantees execution and battery-aware retries.
-- **Decision 2: Direct-to-S3 Presigned Streaming vs. Worker Proxying**:
-  - *Chosen Approach*: Request presigned URL from Cloudflare Worker, then stream `.bin` straight from disk to AWS S3 using 8 KB buffer chunks with OkHttp `RequestBody`.
-  - *Why*: Cloudflare Workers have a 100 MB request payload limit and memory constraints. Direct S3 uploads bypass intermediate proxies and achieve maximum bandwidth.
-- **Decision 3: Dual Indexing (Room + `downloaded_external.json`)**:
-  - *Chosen Approach*: Store metadata in atomic JSON `/sdcard/Mulberry/downloaded_external.json` AND upsert into Room `BookEntity`.
-  - *Why*: Ensures data survives app re-installations while keeping Room as the fast, reactive single source of truth for the Compose UI.
+- **Key User Flows**:
+  1. User selects a local textbook and initiates a community contribution upload.
+  2. The progress banner advances through `Preparing SHA-256 & Vault...` -> `Connecting to Mulberry Cloud...` (`init`) -> `Uploading to Community Library...` (`0%` to `100%` S3 stream).
+  3. At `98%` (`Finalizing review submission...`), the worker establishes a brand-new connection to the Cloudflare Worker endpoint (`POST /api/contribute/finalize`) with `Connection: close` and waits up to 60 seconds for the Hugging Face LFS verification and commit.
+  4. On HTTP 200, the textbook status transitions to `PENDING` review and displays the completion notification and toast. If finalization fails, the upload banner accurately reports the HTTP status code so the user can retry.
+- **Visual Identity & Theme**:
+  - Preserves the existing Mulberry contribution progress card, notification progress bar, and Microsoft Fluent iconography without introducing visual regressions.
 
 ---
 
-### 4. Technical Architecture & Data Strategy
+## 3. Key Product Decisions & Trade-Offs
 
-#### System Architecture & Data Flow
+- **Decision 1: Separate `contributionHttpClient` (No Socket Reuse) vs. Shared `s3UploadClient`**
+  - *Chosen Approach*: Provide a dedicated `contributionHttpClient` configured with `ConnectionPool(0, 1, TimeUnit.NANOSECONDS)` and 30s/60s/60s timeouts for the `init` and `finalize` JSON API calls, while keeping the 300-second write timeout client for streaming large binary payloads to S3.
+  - *Why*: Cloudflare edge closes idle HTTP/1.1 & HTTP/2 connections while the client is busy streaming puluhan/hundreds of megabytes to S3. Disabling socket pooling and sending `Connection: close` forces OkHttp to open a clean socket for `finalize`.
+  - *Alternatives Considered*: Increasing timeouts on a single shared default `OkHttpClient` was rejected because OkHttp still attempts to reuse the half-closed Cloudflare socket from the earlier `init` call.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                             ReaderActivity                              │
-│                                                                         │
-│  Intent.ACTION_VIEW (PDF) ──► Copy to external_preview/<sanitized>.pdf   │
-│  Check if cataloged / downloaded ──► Show AddToDesk Floating Banner     │
-└───────────────┬─────────────────────────────────────────────────────────┘
-                │ User clicks "+ Add to Desk"
-                ▼
+│                        BookContributionManager                          │
+│  • Holds ContributionUploadState (Idle / Uploading / Success / Error)   │
+│  • Provides contributionHttpClient:                                     │
+│      - connectTimeout = 30s, readTimeout = 60s, writeTimeout = 60s      │
+│      - retryOnConnectionFailure = true                                  │
+│      - connectionPool = ConnectionPool(0, 1, TimeUnit.NANOSECONDS)      │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │ Enqueues & Supplies Client
+                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                          AddToDeskBottomSheet                           │
+│                        BookContributionWorker                           │
 │                                                                         │
-│  1. Compute clean slug: title.toCleanBookTitle().slugify()              │
-│  2. Encrypt: VaultCryptoManager.encryptFileToVault() ──► <slug>.bin     │
-│  3. Render Cover: Page 0 @ 150 DPI ──► .covers/<slug>.webp              │
-│  4. Index: SafeFileWriter.writeAtomically() ──► downloaded_external.json│
-│  5. Room Upsert: BookDao.upsertBook(isDownloaded = true, binFilePath)   │
-└───────────────┬─────────────────────────────────────────────────────────┘
-                │ If "Contribute" checked
-                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         BookContributionManager                         │
-│                                                                         │
-│  Enqueues WorkManager: BookContributionWorker                           │
-│  1. POST /api/contribute/init (with X-Device-Id, X-Vip-Code)            │
-│  2. Direct S3 PUT streaming encrypted .bin (8 KB buffer)                │
-│  3. POST /api/contribute/finalize (with Base64 cover + metadata)        │
-│  4. Update contributedStatus = "PENDING" in downloaded_external.json    │
+│  1. POST /api/contribute/init      ──► via contributionHttpClient       │
+│  2. PUT  <presigned S3 URL>        ──► via s3UploadHttpClient (300s)    │
+│  3. POST /api/contribute/finalize  ──► via contributionHttpClient       │
+│       Headers:                                                          │
+│         • Content-Type: application/json                                │
+│         • Connection: close                                             │
+│         • X-Device-Id: <deviceId>                                       │
+│         • X-Vip-Code: <vipCode>                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Files to Create / Modify:
-1. **`app/build.gradle.kts`**:
-   - Add WorkManager dependency: `implementation("androidx.work:work-runtime-ktx:2.10.0")`.
-2. **`AndroidManifest.xml`**:
-   - Register `ACTION_VIEW` intent filter for `ReaderActivity` (`application/pdf`, schemes `content` and `file`, `exported=true`).
-3. **`ReaderActivity.kt`**:
-   - Handle incoming PDF URI from `intent.data`, resolve filename via `OpenableColumns`, cache to `external_preview`, check duplicate state.
-   - Render floating `AddToDeskBanner` and overflow menu item `Add to Desk`.
-4. **`AddToDeskBottomSheet.kt` (New)**:
-   - Compose sheet with Title, Prof, Subject, Asset Type, and Contribute checkbox.
-   - Background encryption, WebP cover generator, `downloaded_external.json` updater, and Room insertion.
-5. **`UserProfile.kt` & `UserProfileRepository.kt`**:
-   - Add VIP capability fields (`vipCode`, `vipTier`, `vipBadgeLabel`, `dailyUploadLimit`).
-   - Persist to preferences, `.profile`, and active vault.
-6. **`UserProfileBottomSheet.kt` & `DeskRootScreen.kt`**:
-   - Expandable "Special Contributor Access Code" card in profile with verify button and worker verification.
-   - Render `VipBadge` beside student's name in `DeskTopAppBar`.
-7. **`BookContributionManager.kt` & `BookContributionWorker.kt` (New)**:
-   - WorkManager integration for LFS S3 uploads with progress notifications and error handling.
+### Interactive Component & State Mapping
+- **Init Stage (`10%`)**: Executes `initRequest` using `contributionHttpClient` with `Connection: close`. Handles HTTP 429 daily quota errors and non-200 responses cleanly.
+- **S3 Upload Stage (`10% -> 98%`)**: Streams 8 KB chunks to S3 with throttled 250 ms UI state updates.
+- **Finalize Stage (`98% -> 100%`)**: Builds `finalizeRequest` with `Connection: close` and `finalizeJsonBody.toRequestBody("application/json".toMediaType())`, executes via `contributionHttpClient`, verifies HTTP success before marking `contributedStatus = "PENDING"`, and updates `ContributionUploadState.Success`.

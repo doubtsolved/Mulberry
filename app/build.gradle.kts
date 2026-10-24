@@ -118,6 +118,7 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
   implementation(libs.coil.compose)
 
   // Local Persistence (Room)
