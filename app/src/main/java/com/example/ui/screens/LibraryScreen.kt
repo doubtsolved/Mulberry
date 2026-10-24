@@ -56,6 +56,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import com.example.ui.components.fluidGlassPressEffect
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1006,15 +1007,16 @@ private fun SubjectFilterChip(
     val colors = LocalMulberryColors.current
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (isSelected) colors.primary.copy(alpha = 0.22f) else colors.surfaceCard,
+        shape = CircleShape,
+        color = if (isSelected) colors.surfaceCard.copy(alpha = 0.92f) else colors.surface.copy(alpha = 0.65f),
         border = BorderStroke(
             1.dp,
-            if (isSelected) colors.primary else colors.borderSubtle
+            if (isSelected) colors.primary.copy(alpha = 0.45f) else colors.borderSubtle.copy(alpha = 0.40f)
         ),
+        shadowElevation = if (isSelected) 4.dp else 0.dp,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .clickable { onClick() }
+            .clip(CircleShape)
+            .fluidGlassPressEffect(onClick = onClick)
             .testTag("subject_chip_$label")
     ) {
         Text(
@@ -1311,15 +1313,16 @@ private fun ProfSelectionBottomSheetContent(
 
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.surfaceCard,
+                color = if (isSelected) colors.surfaceCard.copy(alpha = 0.95f) else colors.surface.copy(alpha = 0.70f),
                 border = BorderStroke(
                     1.dp,
-                    if (isSelected) colors.primary else colors.borderSubtle
+                    if (isSelected) colors.primary.copy(alpha = 0.45f) else colors.borderSubtle.copy(alpha = 0.40f)
                 ),
+                shadowElevation = if (isSelected) 4.dp else 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { onProfSelected(prof) }
+                    .fluidGlassPressEffect(onClick = { onProfSelected(prof) })
                     .testTag("prof_select_option_${prof.id}")
             ) {
                 Row(

@@ -88,6 +88,7 @@ import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.PoppinsFamily
 import com.example.util.toCleanBookTitle
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -582,6 +583,11 @@ fun SearchTopBarContent(
                         onSnippetUpdated(updatedMatches[0].snippet)
                     }
                 }
+
+                MulberryAnalytics.logReaderSearchPerformed(
+                    queryLength = trimmed.length,
+                    resultCount = finalResults.size
+                )
 
                 matches = finalResults
                 isSearching = false
@@ -1229,6 +1235,11 @@ fun EyeRelaxSheetContent(
                 Switch(
                     checked = preferences.eyeRelaxEnabled,
                     onCheckedChange = { enabled ->
+                        MulberryAnalytics.logReaderEyeRelaxToggled(
+                            enabled = enabled,
+                            warmth = preferences.eyeRelaxWarmth,
+                            dim = preferences.eyeRelaxDim
+                        )
                         onUpdatePreferences { it.copy(eyeRelaxEnabled = enabled) }
                     },
                     colors = SwitchDefaults.colors(

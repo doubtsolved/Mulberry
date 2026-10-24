@@ -63,6 +63,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     oldProf = oldProfile.selectedProf,
                     newProf = updated.selectedProf
                 )
+                MulberryAnalytics.logCatalogProfSwitched(
+                    profPhase = updated.selectedProf
+                )
             }
         }
     }
@@ -128,6 +131,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setTheme(theme: ThemeMode) {
         _activeTheme.value = theme
         prefs.edit().putString("theme_mode", theme.name).apply()
+        MulberryAnalytics.logReaderThemeChanged(theme.name)
     }
 
     fun setIconStyle(style: IconStyle) {

@@ -128,6 +128,13 @@ class BookDownloadManager private constructor(
 
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
+                val errorCode = response.code
+                val errorType = if (errorCode in 400..599) "server" else "network"
+                MulberryAnalytics.logBookDownloadFailed(
+                    bookId = targetSlug,
+                    errorCode = errorCode,
+                    errorType = errorType
+                )
                 _downloadState.value = DownloadProgressState.Error(targetSlug, "Server returned HTTP ${response.code}")
                 return@withContext false
             }
@@ -203,6 +210,11 @@ class BookDownloadManager private constructor(
             )
             true
         } catch (e: CancellationException) {
+            val progressPercent = (_downloadState.value as? DownloadProgressState.Downloading)?.progressPercent ?: 0
+            MulberryAnalytics.logBookDownloadCancelled(
+                bookId = targetSlug,
+                progressPercent = progressPercent
+            )
             Log.d(TAG, "Download job gracefully cancelled for $targetSlug")
             if (tempBinFile.exists()) {
                 try { tempBinFile.delete() } catch (_: Exception) {}
@@ -211,6 +223,26 @@ class BookDownloadManager private constructor(
             false
         } catch (e: Exception) {
             Log.e(TAG, "Download failed for $targetSlug: ${e.message}", e)
+            val errorType = when (e) {
+                is java.net.SocketTimeoutException,
+                is java.net.UnknownHostException,
+                is java.net.ConnectException -> "network"
+                is java.io.FileNotFoundException,
+                is java.io.SyncFailedException -> "storage"
+                else -> {
+                    val msg = e.message?.lowercase() ?: ""
+                    if (msg.contains("enospc") || msg.contains("space") || msg.contains("disk") || msg.contains("storage")) {
+                        "storage"
+                    } else {
+                        "network"
+                    }
+                }
+            }
+            MulberryAnalytics.logBookDownloadFailed(
+                bookId = targetSlug,
+                errorCode = -1,
+                errorType = errorType
+            )
             if (tempBinFile.exists()) {
                 try { tempBinFile.delete() } catch (_: Exception) {}
             }

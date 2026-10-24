@@ -67,9 +67,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.example.ui.components.FluidGlassDefaults
+import com.example.ui.components.fluidGlassPressEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -322,12 +325,16 @@ private fun ShimmeringGetStartedButton(
         label = "SweepProgress"
     )
 
-    Box(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = colors.primary,
+        border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
+        shadowElevation = 8.dp,
         modifier = modifier
             .height(52.dp)
+            .shadow(elevation = 8.dp, shape = RoundedCornerShape(16.dp), spotColor = colors.primary.copy(alpha = 0.35f))
             .clip(RoundedCornerShape(16.dp))
-            .background(colors.primary)
-            .clickable(onClick = onClick)
+            .fluidGlassPressEffect(onClick = onClick)
             .drawWithContent {
                 drawContent()
                 val shimmerWidth = size.width * 0.45f
@@ -346,10 +353,10 @@ private fun ShimmeringGetStartedButton(
                     )
                 )
             }
-            .testTag("wizard_get_started_button"),
-        contentAlignment = Alignment.Center
+            .testTag("wizard_get_started_button")
     ) {
         Row(
+            modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -507,12 +514,13 @@ private fun ProfileSetupScreen(
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = colors.surfaceCard,
-                    border = BorderStroke(1.dp, colors.borderSubtle),
+                    color = colors.surfaceCard.copy(alpha = 0.90f),
+                    border = BorderStroke(1.dp, FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)),
+                    shadowElevation = 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { showProfModal = true }
+                        .fluidGlassPressEffect(onClick = { showProfModal = true })
                         .testTag("wizard_prof_dropdown")
                 ) {
                     Row(
@@ -599,38 +607,55 @@ private fun ProfileSetupScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(
-                onClick = onBack,
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, colors.borderSubtle),
+                color = colors.surface.copy(alpha = 0.70f),
+                border = BorderStroke(1.dp, FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)),
+                shadowElevation = 2.dp,
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .fluidGlassPressEffect(onClick = onBack)
             ) {
-                Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
+                Box(contentAlignment = Alignment.Center) {
+                    Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
+                }
             }
 
-            Button(
-                onClick = onNext,
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                color = colors.primary,
+                border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
+                shadowElevation = 8.dp,
                 modifier = Modifier
                     .weight(1.8f)
                     .height(50.dp)
+                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(14.dp), spotColor = colors.primary.copy(alpha = 0.40f))
+                    .clip(RoundedCornerShape(14.dp))
+                    .fluidGlassPressEffect(onClick = onNext)
                     .testTag("wizard_continue_button")
             ) {
-                Text(
-                    text = "Continue",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = FluentIcons.ArrowRight24Regular,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Continue",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = FluentIcons.ArrowRight24Regular,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -855,20 +880,29 @@ private fun PermissionsScreen(
                             }
                         }
                     } else {
-                        Button(
-                            onClick = { requestStorageAccess() },
+                        Surface(
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            color = colors.primary,
+                            border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
+                            shadowElevation = 4.dp,
                             modifier = Modifier
                                 .height(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .fluidGlassPressEffect(onClick = { requestStorageAccess() })
                                 .testTag("wizard_allow_storage_button")
                         ) {
-                            Text(
-                                text = "Allow",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
+                            Box(
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Allow",
+                                    fontFamily = PoppinsFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -954,20 +988,29 @@ private fun PermissionsScreen(
                             }
                         }
                     } else {
-                        Button(
-                            onClick = { requestNotificationAccess() },
+                        Surface(
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            color = colors.primary,
+                            border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
+                            shadowElevation = 4.dp,
                             modifier = Modifier
                                 .height(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .fluidGlassPressEffect(onClick = { requestNotificationAccess() })
                                 .testTag("wizard_allow_notifications_button")
                         ) {
-                            Text(
-                                text = "Allow",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
+                            Box(
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Allow",
+                                    fontFamily = PoppinsFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -980,45 +1023,65 @@ private fun PermissionsScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(
-                onClick = onBack,
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, colors.borderSubtle),
+                color = colors.surface.copy(alpha = 0.70f),
+                border = BorderStroke(1.dp, FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)),
+                shadowElevation = 2.dp,
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .fluidGlassPressEffect(onClick = onBack)
             ) {
-                Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
+                Box(contentAlignment = Alignment.Center) {
+                    Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
+                }
             }
 
-            Button(
-                onClick = onLaunchApp,
-                enabled = canLaunch,
+            Surface(
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = Color.White,
-                    disabledContainerColor = colors.surfaceCard,
-                    disabledContentColor = colors.textMuted
+                color = if (canLaunch) colors.primary else colors.surfaceCard,
+                border = BorderStroke(
+                    1.dp,
+                    if (canLaunch) FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)
+                    else FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)
                 ),
-                border = if (!canLaunch) BorderStroke(1.dp, colors.borderSubtle) else null,
+                shadowElevation = if (canLaunch) 8.dp else 0.dp,
                 modifier = Modifier
                     .weight(1.8f)
                     .height(50.dp)
+                    .then(
+                        if (canLaunch) Modifier.shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(14.dp),
+                            spotColor = colors.primary.copy(alpha = 0.40f)
+                        ) else Modifier
+                    )
+                    .clip(RoundedCornerShape(14.dp))
+                    .fluidGlassPressEffect(enabled = canLaunch, onClick = onLaunchApp)
                     .testTag("wizard_launch_app_button")
             ) {
-                Icon(
-                    imageVector = FluentIcons.Play24Regular,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Launch Mulberry",
-                    fontFamily = PoppinsFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = FluentIcons.Play24Regular,
+                        contentDescription = null,
+                        tint = if (canLaunch) Color.White else colors.textMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Launch Mulberry",
+                        fontFamily = PoppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        color = if (canLaunch) Color.White else colors.textMuted
+                    )
+                }
             }
         }
     }

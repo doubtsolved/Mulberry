@@ -8,6 +8,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.google.gson.annotations.SerializedName
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,6 +96,10 @@ object BookContributionManager {
         totalPages: Int = 1,
         sizeMb: Double = 0.0
     ) {
+        MulberryAnalytics.logContributionInitiated(
+            subject = subject,
+            assetType = type
+        )
         val totalBytes = (sizeMb * 1024.0 * 1024.0).toLong().coerceAtLeast(0L)
         _uploadState.value = ContributionUploadState.Uploading(
             slug = slug,

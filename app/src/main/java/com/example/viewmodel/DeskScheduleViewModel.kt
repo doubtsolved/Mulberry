@@ -204,6 +204,7 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     fun snoozeSession(sessionId: String, minutes: Int = 30) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.snoozeSession(sessionId, minutes)
+            MulberryAnalytics.logStudySessionRescheduled(delayMinutes = minutes)
         }
     }
 
@@ -293,12 +294,16 @@ class DeskScheduleViewModel(private val app: Application) : AndroidViewModel(app
     fun updateWeeklyGoal(newGoalPages: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.updateWeeklyGoal(newGoalPages)
+            val targetHours = (newGoalPages / 30f)
+            MulberryAnalytics.logWeeklyGoalUpdated(targetHours = targetHours)
         }
     }
 
     fun updateWeeklyGoalMinutes(newGoalMinutes: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             scheduleRepo.updateWeeklyGoalMinutes(newGoalMinutes)
+            val targetHours = newGoalMinutes / 60f
+            MulberryAnalytics.logWeeklyGoalUpdated(targetHours = targetHours)
         }
     }
 

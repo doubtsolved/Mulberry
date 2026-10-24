@@ -61,6 +61,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.local.entities.BookEntity
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.fluidGlassPressEffect
 import com.example.ui.theme.LocalMulberryColors
 import com.example.viewmodel.EphemeralMulberryViewModel
 
@@ -233,7 +234,14 @@ fun LibraryScreen(
                 val isSelected = profFilter == prof
                 FilterChip(
                     selected = isSelected,
-                    onClick = { viewModel.setProfFilter(prof) },
+                    onClick = {
+                        viewModel.setProfFilter(prof)
+                        com.mulberry.app.analytics.MulberryAnalytics.logCatalogProfSwitched(prof)
+                    },
+                    modifier = Modifier.fluidGlassPressEffect(onClick = {
+                        viewModel.setProfFilter(prof)
+                        com.mulberry.app.analytics.MulberryAnalytics.logCatalogProfSwitched(prof)
+                    }),
                     label = {
                         Text(
                             text = prof,

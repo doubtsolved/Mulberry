@@ -21,6 +21,7 @@ import com.example.R
 import com.example.data.repository.UserProfileRepository
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.mulberry.app.analytics.MulberryAnalytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
@@ -173,6 +174,7 @@ class BookContributionWorker(
             if (!initSuccessful || initBody.isBlank()) {
                 val errorMsg = "Contribution init failed (HTTP $initCode): $initBody"
                 Log.e(TAG, errorMsg)
+                MulberryAnalytics.logContributionUploadFailed(errorMsg, "init")
                 notifyFailed(title, errorMsg)
                 BookContributionManager.updateUploadState(
                     ContributionUploadState.Error(slug, title, errorMsg)
@@ -275,6 +277,7 @@ class BookContributionWorker(
                 if (!s3Successful) {
                     val errorMsg = "S3 Upload Failed [$s3Code]: $s3Error"
                     Log.e(TAG, errorMsg)
+                    MulberryAnalytics.logContributionUploadFailed(errorMsg, "s3_upload")
                     notifyFailed(title, "S3 upload failed ($s3Code)")
                     BookContributionManager.updateUploadState(
                         ContributionUploadState.Error(slug, title, errorMsg)
@@ -355,6 +358,7 @@ class BookContributionWorker(
             if (!finalizeSuccessful) {
                 val errorMsg = "Finalize failed (HTTP $finalizeCode): $finalizeBody"
                 Log.e(TAG, errorMsg)
+                MulberryAnalytics.logContributionUploadFailed(errorMsg, "finalize")
                 notifyFailed(title, "Finalize failed ($finalizeCode)")
                 BookContributionManager.updateUploadState(
                     ContributionUploadState.Error(slug, title, errorMsg)
@@ -365,6 +369,12 @@ class BookContributionWorker(
             // 7. Update contributedStatus = "PENDING" in downloaded_external.json
             MulberryStorageManager.updateExternalContributedStatus(context, slug, "PENDING")
 
+            val contributorTier = userProfile.vipBadgeLabel.ifBlank { userProfile.vipTier }.lowercase()
+            MulberryAnalytics.logContributionFinalized(
+                bookSlug = slug,
+                contributorTier = contributorTier
+            )
+
             showToastOnMain("Thank you! Your book was submitted for review.")
             notifySuccess(title)
             BookContributionManager.updateUploadState(
@@ -374,6 +384,7 @@ class BookContributionWorker(
         } catch (e: Exception) {
             val failReason = e.localizedMessage ?: "Unknown error during upload"
             Log.e(TAG, "CRITICAL CONTRIBUTION FAILURE: ${e.message}", e)
+            MulberryAnalytics.logContributionUploadFailed(failReason, "unknown")
             notifyFailed(title, "Contribution failed: $failReason")
             BookContributionManager.updateUploadState(
                 ContributionUploadState.Error(

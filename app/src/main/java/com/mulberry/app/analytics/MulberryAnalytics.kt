@@ -151,4 +151,114 @@ object MulberryAnalytics {
             "chapter" to chapter
         ))
     }
+
+    fun logCatalogProfSwitched(profPhase: String) {
+        track("catalog_prof_switched", mapOf(
+            "prof_phase" to profPhase,
+            "user_name" to cachedUserName
+        ))
+    }
+
+    fun logBookDownloadFailed(bookId: String, errorCode: Int, errorType: String) {
+        track("book_download_failed", mapOf(
+            "book_id" to bookId,
+            "error_code" to errorCode,
+            "error_type" to errorType,
+            "user_name" to cachedUserName
+        ))
+    }
+
+    fun logBookDownloadCancelled(bookId: String, progressPercent: Int) {
+        track("book_download_cancelled", mapOf(
+            "book_id" to bookId,
+            "progress_percent" to progressPercent,
+            "user_name" to cachedUserName
+        ))
+    }
+
+    fun logExternalPdfImported(fileSizeMb: Double) {
+        track("external_pdf_imported", mapOf(
+            "file_size_mb" to fileSizeMb,
+            "user_name" to cachedUserName
+        ))
+    }
+
+    fun logReaderSearchPerformed(queryLength: Int, resultCount: Int) {
+        track("reader_search_performed", mapOf(
+            "query_length" to queryLength,
+            "result_count" to resultCount,
+            "prof_year" to cachedProfYear
+        ))
+    }
+
+    fun logReaderThemeChanged(themeName: String) {
+        track("reader_theme_changed", mapOf(
+            "theme_name" to themeName.lowercase().trim()
+        ))
+    }
+
+    fun logReaderEyeRelaxToggled(enabled: Boolean, warmth: Float, dim: Float) {
+        track("reader_eye_relax_toggled", mapOf(
+            "enabled" to enabled,
+            "warmth" to warmth,
+            "dim" to dim
+        ))
+    }
+
+    fun logStudySessionRescheduled(delayMinutes: Int) {
+        track("study_session_rescheduled", mapOf(
+            "delay_minutes" to delayMinutes,
+            "user_name" to cachedUserName,
+            "prof_year" to cachedProfYear
+        ))
+    }
+
+    fun logWeeklyGoalUpdated(targetHours: Float) {
+        track("weekly_goal_updated", mapOf(
+            "target_hours" to targetHours,
+            "user_name" to cachedUserName,
+            "prof_year" to cachedProfYear
+        ))
+    }
+
+    fun logStudyStreakShared(streakDays: Int) {
+        track("study_streak_shared", mapOf(
+            "streak_days" to streakDays,
+            "user_name" to cachedUserName,
+            "prof_year" to cachedProfYear
+        ))
+    }
+
+    fun logContributionInitiated(subject: String, assetType: String) {
+        track("contribution_initiated", mapOf(
+            "subject" to subject,
+            "asset_type" to assetType,
+            "user_name" to cachedUserName,
+            "college" to cachedCollege
+        ))
+    }
+
+    fun logContributionUploadFailed(errorMessage: String, stage: String) {
+        track("contribution_upload_failed", mapOf(
+            "error_message" to errorMessage,
+            "stage" to stage,
+            "user_name" to cachedUserName
+        ))
+    }
+
+    fun logContributionFinalized(bookSlug: String, contributorTier: String) {
+        track("contribution_finalized", mapOf(
+            "book_slug" to bookSlug,
+            "contributor_tier" to contributorTier,
+            "user_name" to cachedUserName,
+            "college" to cachedCollege
+        ))
+    }
+
+    fun logAppUpdateActioned(action: String) {
+        track("app_update_actioned", mapOf(
+            "action" to action,
+            "user_name" to cachedUserName
+        ))
+    }
 }

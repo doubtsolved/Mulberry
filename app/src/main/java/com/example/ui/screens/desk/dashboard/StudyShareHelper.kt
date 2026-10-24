@@ -5,11 +5,13 @@ import android.content.Intent
 import android.widget.Toast
 import com.example.data.analytics.model.StudyMetricsData
 import com.example.data.model.UserProfile
+import com.mulberry.app.analytics.MulberryAnalytics
 
 object StudyShareHelper {
 
     fun shareMetrics(context: Context, metrics: StudyMetricsData, userProfile: UserProfile) {
         try {
+            MulberryAnalytics.logStudyStreakShared(metrics.currentStreakDays)
             val studentName = userProfile.displayName.ifBlank { "Sahabul" }
             val doctorTitle = if (studentName.startsWith("Dr.", ignoreCase = true)) studentName else "Dr. $studentName"
 

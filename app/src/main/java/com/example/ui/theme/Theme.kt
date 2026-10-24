@@ -52,25 +52,31 @@ fun MulberryTheme(
         darkColorScheme(
             primary = mulberryPalette.primary,
             onPrimary = mulberryPalette.onPrimary,
+            primaryContainer = mulberryPalette.surfaceTint,
+            onPrimaryContainer = mulberryPalette.primary,
             background = mulberryPalette.background,
             surface = mulberryPalette.surface,
             surfaceVariant = mulberryPalette.surfaceCard,
             onBackground = mulberryPalette.textPrimary,
             onSurface = mulberryPalette.textPrimary,
             onSurfaceVariant = mulberryPalette.textSecondary,
-            outline = mulberryPalette.borderSubtle
+            outline = mulberryPalette.borderSubtle,
+            outlineVariant = mulberryPalette.borderSubtle
         )
     } else {
         lightColorScheme(
             primary = mulberryPalette.primary,
             onPrimary = mulberryPalette.onPrimary,
+            primaryContainer = mulberryPalette.surfaceTint,
+            onPrimaryContainer = mulberryPalette.primary,
             background = mulberryPalette.background,
             surface = mulberryPalette.surface,
             surfaceVariant = mulberryPalette.surfaceCard,
             onBackground = mulberryPalette.textPrimary,
             onSurface = mulberryPalette.textPrimary,
             onSurfaceVariant = mulberryPalette.textSecondary,
-            outline = mulberryPalette.borderSubtle
+            outline = mulberryPalette.borderSubtle,
+            outlineVariant = mulberryPalette.borderSubtle
         )
     }
 

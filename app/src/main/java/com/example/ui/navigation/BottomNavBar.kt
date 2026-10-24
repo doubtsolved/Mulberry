@@ -1,46 +1,102 @@
 package com.example.ui.navigation
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.MulberryExpressiveLogo
+import com.example.ui.components.fluidGlassPressEffect
 import com.example.ui.theme.LocalMulberryColors
+import com.example.ui.theme.MulberryTheme
+import com.example.ui.theme.PoppinsFamily
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
+/**
+ * Three core tabs for the Mulberry workspace.
+ */
+enum class DeskTab(val title: String) {
+    DESK("Desk"),
+    LIBRARY("Library"),
+    SETTINGS("Settings");
+
+    fun toMulberryTab(): MulberryTab = when (this) {
+        DESK -> MulberryTab.DESK
+        LIBRARY -> MulberryTab.LIBRARY
+        SETTINGS -> MulberryTab.SETTINGS
+    }
+
+    companion object {
+        fun fromMulberryTab(tab: MulberryTab): DeskTab = when (tab) {
+            MulberryTab.DESK -> DESK
+            MulberryTab.LIBRARY -> LIBRARY
+            MulberryTab.SETTINGS -> SETTINGS
+        }
+    }
+}
+
+/**
+ * Legacy MulberryTab representation retained for backward-compatibility.
+ */
 enum class MulberryTab(
     val title: String,
     val testTag: String,
@@ -78,6 +134,256 @@ val DEFAULT_TAB_CONFIGS = listOf(
     NavTabConfig(MulberryTab.SETTINGS, isVisible = true)
 )
 
+/**
+ * High-fidelity "Elastic Liquid Pill" floating glass dock in Jetpack Compose.
+ *
+ * Strictly adapts to Mulberry's 6 custom themes:
+ * - Dock Surface: Translucent frosted glass effect (70% opacity) with specular highlight and ambient shadow.
+ * - Active Pill: Theme surfaceCard background with subtle primary outline border.
+ * - Icons & Labels: Active colored in theme primary, inactive in theme textSecondary.
+ * - Spring Physics: Medium bouncy spring with fluid stretch deformation during transit.
+ */
+@Composable
+fun ElasticGlassBottomBar(
+    selectedTab: DeskTab,
+    onTabSelected: (DeskTab) -> Unit,
+    modifier: Modifier = Modifier,
+    onTabLongClick: (DeskTab) -> Unit = {}
+) {
+    val colors = LocalMulberryColors.current
+    val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+    val tabs = remember { DeskTab.entries }
+
+    // Tab measured positions: Map<DeskTab, Pair<OffsetXPx, WidthPx>>
+    var tabBounds by remember { mutableStateOf(mapOf<DeskTab, Pair<Float, Float>>()) }
+
+    val currentBounds = tabBounds[selectedTab]
+    val targetOffset = currentBounds?.first ?: 0f
+    val targetWidth = currentBounds?.second ?: 0f
+
+    val offsetAnimatable = remember { Animatable(0f) }
+    val widthAnimatable = remember { Animatable(0f) }
+    var hasInitializedTarget by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedTab, currentBounds) {
+        if (currentBounds != null) {
+            if (!hasInitializedTarget) {
+                offsetAnimatable.snapTo(currentBounds.first)
+                widthAnimatable.snapTo(currentBounds.second)
+                hasInitializedTarget = true
+            } else {
+                coroutineScope.launch {
+                    offsetAnimatable.animateTo(
+                        targetValue = currentBounds.first,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+                }
+                coroutineScope.launch {
+                    widthAnimatable.animateTo(
+                        targetValue = currentBounds.second,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    // Dynamic horizontal deformation (stretch) based on transit delta
+    val distance = kotlin.math.abs(offsetAnimatable.value - targetOffset)
+    val stretchScaleX = 1f + (distance / (targetWidth.coerceAtLeast(80f) * 2.2f)).coerceIn(0f, 0.22f)
+    val movingRight = targetOffset >= offsetAnimatable.value
+
+    // Translucent frosted glass rim gradient border
+    val glassBorderBrush = remember(colors.isDark, colors.borderSubtle) {
+        Brush.verticalGradient(
+            colors = listOf(
+                if (colors.isDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.65f),
+                colors.borderSubtle.copy(alpha = 0.40f)
+            )
+        )
+    }
+
+    // Specular top rim light reflection
+    val rimLightBrush = remember(colors.isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                if (colors.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f),
+                Color.Transparent
+            )
+        )
+    }
+
+    // Floating pill container with 16.dp horizontal & 16.dp bottom margin (preserving WindowInsets.navigationBars)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Multi-layered frosted glass dock surface (70% opacity with ambient shadow & rim light)
+        Surface(
+            shape = CircleShape,
+            color = colors.surface.copy(alpha = 0.70f),
+            border = BorderStroke(1.dp, glassBorderBrush),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .fillMaxWidth()
+                .height(64.dp)
+                .shadow(
+                    elevation = 12.dp,
+                    shape = CircleShape,
+                    spotColor = colors.primary.copy(alpha = 0.20f),
+                    ambientColor = Color.Black.copy(alpha = 0.20f)
+                )
+                .drawBehind {
+                    // Specular frosted glass upper highlight sheen
+                    drawRoundRect(
+                        brush = rimLightBrush,
+                        size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.5f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f, size.height / 2f)
+                    )
+                }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp, vertical = 6.dp)
+            ) {
+                // 1. Sliding Elastic Liquid Pill Indicator strictly styled to active theme colors
+                if (hasInitializedTarget) {
+                    Box(
+                        modifier = Modifier
+                            .offset { IntOffset(offsetAnimatable.value.roundToInt(), 0) }
+                            .width(with(LocalDensity.current) { widthAnimatable.value.toDp() })
+                            .fillMaxHeight()
+                            .graphicsLayer {
+                                scaleX = stretchScaleX
+                                transformOrigin = TransformOrigin(
+                                    pivotFractionX = if (movingRight) 0.20f else 0.80f,
+                                    pivotFractionY = 0.5f
+                                )
+                            }
+                            .clip(CircleShape)
+                            // Theme surface card tint with crisp primary outline
+                            .background(colors.surfaceCard.copy(alpha = 0.92f))
+                            .border(
+                                width = 1.dp,
+                                color = colors.primary.copy(alpha = 0.35f),
+                                shape = CircleShape
+                            )
+                    )
+                }
+
+                // 2. Interactive Tabs Row
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    tabs.forEach { tab ->
+                        val isSelected = tab == selectedTab
+                        val mulberryTab = tab.toMulberryTab()
+
+                        Box(
+                            modifier = Modifier
+                                .weight(if (isSelected) 1.35f else 1f)
+                                .fillMaxHeight()
+                                .clip(CircleShape)
+                                .onGloballyPositioned { coordinates ->
+                                    val localPos = coordinates.positionInParent()
+                                    val size = coordinates.size
+                                    tabBounds = tabBounds + (tab to Pair(localPos.x, size.width.toFloat()))
+                                }
+                                .fluidGlassPressEffect(
+                                    onClick = {
+                                        if (!isSelected) {
+                                            onTabSelected(tab)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        onTabLongClick(tab)
+                                    }
+                                )
+                                .testTag(mulberryTab.testTag),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 10.dp)
+                            ) {
+                                // Tab Icon
+                                when (tab) {
+                                    DeskTab.LIBRARY -> {
+                                        MulberryExpressiveLogo(
+                                            size = 24.dp,
+                                            showContainer = false
+                                        )
+                                    }
+                                    DeskTab.DESK -> {
+                                        Icon(
+                                            imageVector = if (isSelected) FluentIcons.CalendarLtr24Filled else FluentIcons.CalendarLtr24Regular,
+                                            contentDescription = tab.title,
+                                            tint = if (isSelected) colors.primary else colors.textSecondary.copy(alpha = 0.70f),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    DeskTab.SETTINGS -> {
+                                        Icon(
+                                            imageVector = if (isSelected) FluentIcons.Settings24Filled else FluentIcons.Settings24Regular,
+                                            contentDescription = tab.title,
+                                            tint = if (isSelected) colors.primary else colors.textSecondary.copy(alpha = 0.70f),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+
+                                // Active Label Expansion
+                                AnimatedVisibility(
+                                    visible = isSelected,
+                                    enter = fadeIn(animationSpec = tween(180, delayMillis = 40)) + expandHorizontally(
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessLow
+                                        )
+                                    ),
+                                    exit = fadeOut(animationSpec = tween(100)) + shrinkHorizontally(
+                                        animationSpec = tween(100)
+                                    )
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = tab.title,
+                                            fontFamily = PoppinsFamily,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = colors.primary,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Backward-compatible wrapper mapping MulberryTab to the new ElasticGlassBottomBar dock.
+ */
 @Composable
 fun MulberryBottomNavBar(
     selectedTab: MulberryTab,
@@ -86,111 +392,38 @@ fun MulberryBottomNavBar(
     tabs: List<MulberryTab> = MulberryTab.entries,
     onTabLongClick: (MulberryTab) -> Unit = {}
 ) {
-    val colors = LocalMulberryColors.current
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val borderHairline = colors.borderSubtle
+    ElasticGlassBottomBar(
+        selectedTab = DeskTab.fromMulberryTab(selectedTab),
+        onTabSelected = { deskTab -> onTabSelected(deskTab.toMulberryTab()) },
+        modifier = modifier,
+        onTabLongClick = { deskTab -> onTabLongClick(deskTab.toMulberryTab()) }
+    )
+}
 
-    // Ultra-fine 0.5.dp top hairline border + translucent frosted backdrop
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .drawBehind {
-                drawLine(
-                    color = borderHairline,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 0.5.dp.toPx()
+@Preview(name = "Elastic Glass Bottom Bar - Scaffold", showBackground = true)
+@Composable
+fun ElasticGlassBottomBarPreview() {
+    MulberryTheme {
+        var selected by remember { mutableStateOf(DeskTab.DESK) }
+        Scaffold(
+            bottomBar = {
+                ElasticGlassBottomBar(
+                    selectedTab = selected,
+                    onTabSelected = { selected = it }
                 )
             }
-            .background(colors.surface.copy(alpha = if (colors.isDark) 0.92f else 0.96f))
-            .navigationBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            tabs.forEach { tab ->
-                val isSelected = tab == selectedTab
-
-                val animatedScale by animateFloatAsState(
-                    targetValue = if (isSelected) 1f else 0.92f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
-                    label = "TabPillScale"
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Current: ${selected.title}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-
-                val pillBgColor by animateColorAsState(
-                    targetValue = if (isSelected) colors.surfaceTint else Color.Transparent,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "TabPillBg"
-                )
-
-                val contentColor by animateColorAsState(
-                    targetValue = if (isSelected) colors.primary else colors.textSecondary,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "TabContentColor"
-                )
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag(tab.testTag)
-                        .clip(RoundedCornerShape(18.dp))
-                        .pointerInput(tab) {
-                            detectTapGestures(
-                                onTap = { onTabSelected(tab) },
-                                onLongPress = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onTabLongClick(tab)
-                                }
-                            )
-                        }
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // Pill Indicator: 34.dp height, 56.dp width, 18.dp radius
-                    val isLibraryTab = tab == MulberryTab.LIBRARY
-                    Box(
-                        modifier = Modifier
-                            .width(56.dp)
-                            .height(if (isLibraryTab) 42.dp else 34.dp)
-                            .clip(RoundedCornerShape(if (isLibraryTab) 21.dp else 18.dp))
-                            .background(pillBgColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLibraryTab) {
-                            com.example.ui.components.MulberryExpressiveLogo(
-                                size = 28.dp,
-                                showContainer = false
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (isSelected) tab.filledIcon else tab.regularIcon,
-                                contentDescription = tab.title,
-                                tint = contentColor,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    if (!isLibraryTab) {
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Text(
-                            text = tab.title,
-                            color = contentColor,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp
-                        )
-                    }
-                }
             }
         }
     }

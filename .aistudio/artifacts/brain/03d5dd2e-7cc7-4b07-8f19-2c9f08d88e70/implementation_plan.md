@@ -1,77 +1,99 @@
-# Fix HTTP 408 Request Timeout on Book Contribution Finalize
+# Universal Fluid Physics, Tactile Haptics & Glass Styling Plan (Tabs & Setup Wizard)
 
-Resolves the `HTTP 408 Request Timeout` occurring on `POST /api/contribute/finalize` after large S3 textbook uploads complete by isolating the contribution API client from stale pooled sockets and forcing a fresh TCP/TLS handshake on finalization.
+Implement a universal, physics-based fluid interaction model and glassmorphic styling system across all tab buttons, filter chips, and the Setup Wizard UI in Mulberry.
+
+---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The contribution pipeline performs a short `init` request to the Cloudflare Worker, followed by a multi-minute direct binary upload to S3, and then a `finalize` call back to the Cloudflare Worker (which in turn commits LFS pointers and metadata to Hugging Face Git, taking 15–25 seconds). Reusing an idle pooled socket across the long S3 upload causes Cloudflare edge to drop or time out the connection (`HTTP 408`).
-
-- **Confirmed Decision 1 — Dedicated `contributionHttpClient` with Zero-Idle Connection Pool**: Configure `contributionHttpClient` with `connectTimeout(30, TimeUnit.SECONDS)`, `readTimeout(60, TimeUnit.SECONDS)`, `writeTimeout(60, TimeUnit.SECONDS)`, `retryOnConnectionFailure(true)`, and `connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))` so `init` and `finalize` never reuse stale sockets across long S3 uploads.
-- **Confirmed Decision 2 — Explicit `Connection: close` Header on Finalize**: Add `.addHeader("Connection", "close")` (alongside `Content-Type`, `X-Device-Id`, and `X-Vip-Code`) and use `.toRequestBody("application/json".toMediaType())` when constructing `finalizeRequest` to guarantee a fresh handshake at the Cloudflare edge.
-- **Confirmed Decision 3 — Explicit Finalize Status Verification**: Check `finalizeResponse.isSuccessful` and surface non-2xx responses (including HTTP 408/5xx) as a clear error state rather than silently marking failed finalizations as succeeded.
+> The following user preferences were confirmed during clarification:
+> - **Extended Universal Scope**: Applied across all tab buttons (bottom glass dock, navigation rail, catalog curriculum stage tabs, subject filter chips) **AND** the Setup Wizard UI buttons (Get Started, Continue, Launch Mulberry, Back, and Permission grant buttons).
+> - **Press Physics Reaction**: Spring-loaded bouncy scale-down to `0.94f` on touch down, springing back to `1.0f` on release with `Spring.DampingRatioMediumBouncy`.
+> - **Tactile Haptic Pattern**: Dual-stage tactile feedback with a light tick on touch down (`HapticFeedbackType.TextHandleMove`) and a crisp selection confirmation click on release.
+> - **Setup Wizard Button Styling**:
+>   - Primary CTA buttons (Get Started, Continue, Launch Mulberry) styled with a frosted glass glow, spring bounce, and dual haptics.
+>   - Secondary buttons (Back and Permission grant buttons) styled with translucent frosted glass fill and hairline borders.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Eliminates socket reuse timeouts when finalizing community textbook contributions after 100% S3 upload completion.
-- **Target Audience / Persona**: Medical students and contributors uploading textbooks to the Mulberry Community Library over variable mobile or Wi-Fi connections.
-- **Key Value**: Ensures that once a user's textbook finishes uploading 100% to S3, the quarantine commit to Hugging Face completes reliably without failing at 98% with an `HTTP 408 Request Timeout`.
+Create a shared, reusable Compose modifier and button interaction system (`FluidGlassInteractiveSystem`):
+1. **Interactive Touch Physics**:
+   - Detects press gestures cooperatively via `pointerInput`.
+   - On down press: immediately compresses scale to `0.94f` via bouncy spring physics and emits light tactile tick (`TextHandleMove`).
+   - On tap completion: emits selection confirmation click, executes callback, and snaps back to `1.0f` with elastic overshoot.
+   - On gesture cancellation (finger dragged away): smoothly relaxes back to `1.0f` without trigger.
+2. **Glassmorphic Surface System**:
+   - Frosted translucent fill derived strictly from the active theme (`colors.surfaceCard` and `colors.surface.copy(alpha = 0.70f..0.85f)`).
+   - Hairline specular border (`BorderStroke(1.dp)`) with top rim reflection.
+   - Ambient drop shadow on active selection and primary actions.
 
 ---
 
-## 2. User Experience & Visual Design
-
-- **Key User Flows**:
-  1. User selects a local textbook and initiates a community contribution upload.
-  2. The progress banner advances through `Preparing SHA-256 & Vault...` -> `Connecting to Mulberry Cloud...` (`init`) -> `Uploading to Community Library...` (`0%` to `100%` S3 stream).
-  3. At `98%` (`Finalizing review submission...`), the worker establishes a brand-new connection to the Cloudflare Worker endpoint (`POST /api/contribute/finalize`) with `Connection: close` and waits up to 60 seconds for the Hugging Face LFS verification and commit.
-  4. On HTTP 200, the textbook status transitions to `PENDING` review and displays the completion notification and toast. If finalization fails, the upload banner accurately reports the HTTP status code so the user can retry.
-- **Visual Identity & Theme**:
-  - Preserves the existing Mulberry contribution progress card, notification progress bar, and Microsoft Fluent iconography without introducing visual regressions.
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Separate `contributionHttpClient` (No Socket Reuse) vs. Shared `s3UploadClient`**
-  - *Chosen Approach*: Provide a dedicated `contributionHttpClient` configured with `ConnectionPool(0, 1, TimeUnit.NANOSECONDS)` and 30s/60s/60s timeouts for the `init` and `finalize` JSON API calls, while keeping the 300-second write timeout client for streaming large binary payloads to S3.
-  - *Why*: Cloudflare edge closes idle HTTP/1.1 & HTTP/2 connections while the client is busy streaming puluhan/hundreds of megabytes to S3. Disabling socket pooling and sending `Connection: close` forces OkHttp to open a clean socket for `finalize`.
-  - *Alternatives Considered*: Increasing timeouts on a single shared default `OkHttpClient` was rejected because OkHttp still attempts to reuse the half-closed Cloudflare socket from the earlier `init` call.
-
----
-
-## 4. Technical Architecture & Data Strategy *(Technical Reference)*
-
-### Architecture & Component Diagram
+## 2. Interaction & Component Coverage
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        BookContributionManager                          │
-│  • Holds ContributionUploadState (Idle / Uploading / Success / Error)   │
-│  • Provides contributionHttpClient:                                     │
-│      - connectTimeout = 30s, readTimeout = 60s, writeTimeout = 60s      │
-│      - retryOnConnectionFailure = true                                  │
-│      - connectionPool = ConnectionPool(0, 1, TimeUnit.NANOSECONDS)      │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │ Enqueues & Supplies Client
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        BookContributionWorker                           │
-│                                                                         │
-│  1. POST /api/contribute/init      ──► via contributionHttpClient       │
-│  2. PUT  <presigned S3 URL>        ──► via s3UploadHttpClient (300s)    │
-│  3. POST /api/contribute/finalize  ──► via contributionHttpClient       │
-│       Headers:                                                          │
-│         • Content-Type: application/json                                │
-│         • Connection: close                                             │
-│         • X-Device-Id: <deviceId>                                       │
-│         • X-Vip-Code: <vipCode>                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Universal Fluid Tab & Button Lifecycle                    │
+│                                                                             │
+│   Touch Down                    Hold / Transit                 Release      │
+│   ├── Light Tick Haptic         ├── Compressed (0.94f)         ├── Confirm  │
+│   └── Spring scale: 1.0 -> 0.94 └── Dynamic Glass Highlight    └── Spring 1 │
+│                                                                             │
+│                  Spring Spec: DampingRatioMediumBouncy                      │
+│                  Scale Range: 0.94f (pressed) <-> 1.0f (idle)               │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Interactive Component & State Mapping
-- **Init Stage (`10%`)**: Executes `initRequest` using `contributionHttpClient` with `Connection: close`. Handles HTTP 429 daily quota errors and non-200 responses cleanly.
-- **S3 Upload Stage (`10% -> 98%`)**: Streams 8 KB chunks to S3 with throttled 250 ms UI state updates.
-- **Finalize Stage (`98% -> 100%`)**: Builds `finalizeRequest` with `Connection: close` and `finalizeJsonBody.toRequestBody("application/json".toMediaType())`, executes via `contributionHttpClient`, verifies HTTP success before marking `contributedStatus = "PENDING"`, and updates `ContributionUploadState.Success`.
+### Components Receiving the Universal System:
+1. **Floating Dock Tabs** (`BottomNavBar.kt`): Desk, Library, Settings items in `ElasticGlassBottomBar`.
+2. **Navigation Rail Tabs** (`NavigationRail.kt`): Rail items for tablets and foldables.
+3. **Curriculum Stage Tabs** (`LibraryScreen.kt` & `library/LibraryScreen.kt`): 1st Prof, 2nd Prof, 3rd Prof Part 1, Final Prof.
+4. **Subject Filter Chips** (`LibraryScreen.kt`): "All", "Anatomy", "Physiology", "Biochemistry", "Pathology", etc.
+5. **Setup Wizard Buttons** (`SetupWizardScreen.kt`):
+   - **Step 1**: `ShimmeringGetStartedButton` ("Get Started ->") with frosted glass glow and spring compression.
+   - **Step 2**:
+     - `profile_prof_picker` interactive card.
+     - Secondary "Back" button (frosted glass outline).
+     - Primary "Continue ->" CTA button (frosted glass glow with spring bounce & dual haptics).
+   - **Step 3**:
+     - Storage permission & notification permission grant buttons (frosted glass pill with primary accent).
+     - Secondary "Back" button (frosted glass outline).
+     - Primary "Launch Mulberry ->" CTA button (frosted glass glow with spring bounce & dual haptics).
+
+---
+
+## 3. Technical Architecture & Component Changes
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   FluidGlassInteractiveSystem                          │
+│   • Spring Animatable(scale: 1.0f)                                     │
+│   • pointerInput(press/release/cancel)                                 │
+│   • LocalHapticFeedback (tick on down, click on select)                │
+│   • Frosted glass background & specular border brush                   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+    ┌───────────────────────────────┼───────────────────────────────┐
+    ▼                               ▼                               ▼
+┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────┐
+│   Navigation Tabs     │  │   Catalog & Chips     │  │   Setup Wizard UI     │
+│ • Floating Glass Dock │  │ • Prof Stage Tabs     │  │ • Get Started CTA     │
+│ • Navigation Rail     │  │ • Subject Filter Chips│  │ • Continue & Launch   │
+│                       │  │                       │  │ • Back & Permissions  │
+└───────────────────────┘  └───────────────────────┘  └───────────────────────┘
+```
+
+---
+
+## 4. Verification & Validation Plan
+
+- Verify compilation via `compile_applet`.
+- Verify spring bounce compression (scale down to 0.94f) and rebound across:
+  - Bottom bar dock tabs
+  - Catalog curriculum selectors and subject filter chips
+  - Setup Wizard action buttons (Get Started, Continue, Launch Mulberry, Back, Permissions).
+- Verify tactile dual-stage haptics on real device / preview.
+- Ensure zero hardcoded hex colors and strict theme synchronization across all 6 themes.

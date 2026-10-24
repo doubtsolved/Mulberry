@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.fluidGlassPressEffect
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 
@@ -123,15 +124,10 @@ fun MulberryNavigationRail(
                         modifier = Modifier
                             .testTag(tab.testTag)
                             .clip(RoundedCornerShape(18.dp))
-                            .pointerInput(tab) {
-                                detectTapGestures(
-                                    onTap = { onTabSelected(tab) },
-                                    onLongPress = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onTabLongClick(tab)
-                                    }
-                                )
-                            }
+                            .fluidGlassPressEffect(
+                                onClick = { onTabSelected(tab) },
+                                onLongClick = { onTabLongClick(tab) }
+                            )
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center

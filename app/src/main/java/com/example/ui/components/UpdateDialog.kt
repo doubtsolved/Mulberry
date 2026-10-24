@@ -68,6 +68,7 @@ import com.example.ui.theme.PoppinsFamily
 import com.example.util.DownloadState
 import com.example.util.ReleaseInfo
 import com.example.util.UpdateManager
+import com.mulberry.app.analytics.MulberryAnalytics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +84,16 @@ fun UpdateBottomSheet(
 ) {
     val colors = LocalMulberryColors.current
     val context = LocalContext.current
+
+    val handleUpdateNow = {
+        MulberryAnalytics.logAppUpdateActioned("clicked_update")
+        onStartDownload()
+    }
+
+    val handleDismiss = {
+        MulberryAnalytics.logAppUpdateActioned("dismissed")
+        onDismiss()
+    }
 
     // Glowing animation transitions for the upper border
     val infiniteTransition = rememberInfiniteTransition(label = "update_glow_transition")
@@ -106,7 +117,7 @@ fun UpdateBottomSheet(
     )
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = handleDismiss,
         sheetState = sheetState,
         containerColor = colors.surface,
         contentColor = colors.textPrimary,
@@ -272,8 +283,8 @@ fun UpdateBottomSheet(
                         StateAChangelog(
                             release = release,
                             currentVersion = currentVersion,
-                            onUpdateNow = onStartDownload,
-                            onLater = onDismiss
+                            onUpdateNow = handleUpdateNow,
+                            onLater = handleDismiss
                         )
                     }
                     is DownloadState.Downloading -> {

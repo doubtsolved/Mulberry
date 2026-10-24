@@ -300,6 +300,9 @@ class ReaderActivity : AppCompatActivity() {
                 }
                 isExternalPdfState.value = true
 
+                val sizeMb = tempFile.length() / (1024.0 * 1024.0)
+                MulberryAnalytics.logExternalPdfImported(sizeMb)
+
                 val alreadyInDesk = com.example.util.MulberryStorageManager.isBookInMulberry(
                     context = applicationContext,
                     fileName = tempFile.name,
