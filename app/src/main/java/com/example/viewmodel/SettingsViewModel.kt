@@ -91,7 +91,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // 2. Active Theme
     private val _activeTheme = MutableStateFlow(
-        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.PAPER.name))
+        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.OLDED.name))
     )
     val activeTheme: StateFlow<ThemeMode> = _activeTheme.asStateFlow()
 

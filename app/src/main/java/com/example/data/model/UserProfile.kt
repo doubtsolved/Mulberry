@@ -1,10 +1,11 @@
 package com.example.data.model
 
 data class UserProfile(
-    val displayName: String = "Sahabul",
+    val displayName: String = "Dr. Sharma",
     val academicRole: String = "Medical Student",
     val targetExamOrSubject: String = "MBBS 1st Year",
     val institution: String = "",
+    val gender: String = "",
     val dailyPageGoal: Int = 20,
     val selectedProf: String = "1st Prof",
     val lastUpdated: Long = System.currentTimeMillis(),

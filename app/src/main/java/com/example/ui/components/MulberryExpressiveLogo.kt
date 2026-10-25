@@ -146,8 +146,9 @@ fun MulberryProfileAvatar(
 
     var boxModifier = modifier
         .size(size)
+        .then(if (onClick != null) Modifier.fluidGlassPressEffect(onClick = onClick) else Modifier)
         .clip(shape)
-        .background(colors.primary.copy(alpha = 0.12f))
+        .background(colors.primary.copy(alpha = 0.14f))
 
     if (outlineBrush != null) {
         boxModifier = boxModifier.border(
@@ -155,10 +156,12 @@ fun MulberryProfileAvatar(
             brush = outlineBrush,
             shape = shape
         )
-    }
-
-    if (onClick != null) {
-        boxModifier = boxModifier.clickable { onClick() }
+    } else {
+        boxModifier = boxModifier.border(
+            width = 1.dp,
+            color = colors.primary.copy(alpha = 0.28f),
+            shape = shape
+        )
     }
 
     if (avatarTestTag != null) {
@@ -182,6 +185,7 @@ fun MulberryProfileAvatar(
 /**
  * Unified top header across Desk, Mulberry Shelf (Library), and Settings:
  * [Mulberry Icon] [Title]                        [Profile Icon]
+ * Supports translucent refractive glass backdrop with caustic sheen & prismatic bottom border.
  */
 @Composable
 fun MulberryUnifiedHeader(
@@ -191,14 +195,17 @@ fun MulberryUnifiedHeader(
     modifier: Modifier = Modifier,
     horizontalPadding: Dp = 20.dp,
     verticalPadding: Dp = 12.dp,
+    showGlassBackground: Boolean = true,
     titleTestTag: String? = null,
     avatarTestTag: String = "header_profile_avatar_button"
 ) {
     val colors = LocalMulberryColors.current
 
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
+            .then(if (showGlassBackground) Modifier.refractiveHeaderGlass() else Modifier)
+            .then(modifier)
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically

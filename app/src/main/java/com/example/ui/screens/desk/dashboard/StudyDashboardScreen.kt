@@ -205,7 +205,7 @@ private fun StudentGreetingCard(
     streakDays: Int
 ) {
     val colors = LocalMulberryColors.current
-    val studentName = userProfile.displayName.ifBlank { "Sahabul" }
+    val studentName = userProfile.displayName.ifBlank { "Dr. Sharma" }
     val doctorTitle = if (studentName.startsWith("Dr.", ignoreCase = true)) studentName else "Dr. $studentName"
 
     Surface(

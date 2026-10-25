@@ -17,6 +17,7 @@ object MulberryAnalytics {
     private var cachedUserName: String = "Anonymous"
     private var cachedCollege: String = "Not Provided"
     private var cachedProfYear: String = "1st Prof"
+    private var cachedGender: String = "Not Specified"
 
     /**
      * Call once in the Application class or main entry point.
@@ -34,10 +35,13 @@ object MulberryAnalytics {
     /**
      * Cache student metadata in memory so subsequent events inherit user context.
      */
-    fun setUserContext(name: String?, college: String?, prof: String?) {
+    fun setUserContext(name: String?, college: String?, prof: String?, gender: String? = null) {
         cachedUserName = name?.takeIf { it.isNotBlank() } ?: "Anonymous"
         cachedCollege = college?.takeIf { it.isNotBlank() } ?: "Not Provided"
         cachedProfYear = prof?.takeIf { it.isNotBlank() } ?: "1st Prof"
+        if (gender != null) {
+            cachedGender = gender.takeIf { it.isNotBlank() } ?: "Not Specified"
+        }
     }
 
     private fun track(eventName: String, props: Map<String, Any> = emptyMap()) {
@@ -60,16 +64,18 @@ object MulberryAnalytics {
             "user_name" to cachedUserName,
             "college" to cachedCollege,
             "prof_year" to cachedProfYear,
+            "gender" to cachedGender,
             "theme" to activeTheme
         ))
     }
 
-    fun logProfileRegistered(name: String, college: String, prof: String) {
-        setUserContext(name, college, prof)
+    fun logProfileRegistered(name: String, college: String, prof: String, gender: String = "") {
+        setUserContext(name, college, prof, gender)
         track("user_onboarded", mapOf(
             "user_name" to cachedUserName,
             "college" to cachedCollege,
-            "prof_year" to cachedProfYear
+            "prof_year" to cachedProfYear,
+            "gender" to cachedGender
         ))
     }
 

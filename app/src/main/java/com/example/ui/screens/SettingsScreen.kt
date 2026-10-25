@@ -209,20 +209,26 @@ fun SettingsScreen(
             modifier = modifier
                 .fillMaxSize()
                 .background(colors.backgroundGradient)
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Unified Screen Header: [Mulberry Icon] Settings         [Profile Icon]
+            // Unified Refractive Glass Screen Header: [Mulberry Icon] Settings         [Profile Icon]
             com.example.ui.components.MulberryUnifiedHeader(
                 title = "Settings",
                 userProfile = userProfile,
                 onProfileClick = { showProfileBottomSheet = true },
-                horizontalPadding = 4.dp,
-                verticalPadding = 4.dp,
+                modifier = Modifier.statusBarsPadding(),
+                horizontalPadding = 20.dp,
+                verticalPadding = 12.dp,
+                showGlassBackground = true,
                 avatarTestTag = "settings_profile_avatar_button"
             )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
 
             // TOP PROFILE HERO CARD
             val activeCurriculum = remember(userProfile.selectedProf) {
@@ -399,7 +405,8 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(72.dp))
+                Spacer(modifier = Modifier.height(100.dp))
+            }
         }
 
         // ============================================================

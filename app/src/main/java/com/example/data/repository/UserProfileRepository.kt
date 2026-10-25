@@ -38,6 +38,7 @@ class UserProfileRepository(private val context: Context) {
         private const val KEY_ACADEMIC_ROLE = "academic_role"
         private const val KEY_TARGET_EXAM_OR_SUBJECT = "target_exam_or_subject"
         private const val KEY_INSTITUTION = "institution"
+        private const val KEY_GENDER = "user_gender"
         private const val KEY_DAILY_PAGE_GOAL = "daily_page_goal"
         private const val KEY_SELECTED_PROF = "selected_prof"
         private const val KEY_LAST_UPDATED = "last_updated"
@@ -101,10 +102,11 @@ class UserProfileRepository(private val context: Context) {
 
     private fun loadFromPrefs(): UserProfile {
         return UserProfile(
-            displayName = prefs.getString(KEY_DISPLAY_NAME, "Sahabul") ?: "Sahabul",
+            displayName = prefs.getString(KEY_DISPLAY_NAME, "Dr. Sharma") ?: "Dr. Sharma",
             academicRole = prefs.getString(KEY_ACADEMIC_ROLE, "Medical Student") ?: "Medical Student",
             targetExamOrSubject = prefs.getString(KEY_TARGET_EXAM_OR_SUBJECT, "MBBS 1st Year") ?: "MBBS 1st Year",
             institution = prefs.getString(KEY_INSTITUTION, "") ?: "",
+            gender = prefs.getString(KEY_GENDER, "") ?: "",
             dailyPageGoal = prefs.getInt(KEY_DAILY_PAGE_GOAL, 20).coerceAtLeast(1),
             selectedProf = prefs.getString(KEY_SELECTED_PROF, "1st Prof") ?: "1st Prof",
             lastUpdated = prefs.getLong(KEY_LAST_UPDATED, System.currentTimeMillis()),
@@ -217,10 +219,11 @@ class UserProfileRepository(private val context: Context) {
 
     private fun saveToPrefs(profile: UserProfile) {
         prefs.edit()
-            .putString(KEY_DISPLAY_NAME, profile.displayName.trim().ifEmpty { "Sahabul" })
+            .putString(KEY_DISPLAY_NAME, profile.displayName.trim().ifEmpty { "Dr. Sharma" })
             .putString(KEY_ACADEMIC_ROLE, profile.academicRole.trim().ifEmpty { "Medical Student" })
             .putString(KEY_TARGET_EXAM_OR_SUBJECT, profile.targetExamOrSubject.trim().ifEmpty { "MBBS 1st Year" })
             .putString(KEY_INSTITUTION, profile.institution.trim())
+            .putString(KEY_GENDER, profile.gender.trim())
             .putInt(KEY_DAILY_PAGE_GOAL, profile.dailyPageGoal.coerceAtLeast(1))
             .putString(KEY_SELECTED_PROF, profile.selectedProf.ifEmpty { "1st Prof" })
             .putLong(KEY_LAST_UPDATED, profile.lastUpdated)

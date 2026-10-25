@@ -12,7 +12,7 @@ object StudyShareHelper {
     fun shareMetrics(context: Context, metrics: StudyMetricsData, userProfile: UserProfile) {
         try {
             MulberryAnalytics.logStudyStreakShared(metrics.currentStreakDays)
-            val studentName = userProfile.displayName.ifBlank { "Sahabul" }
+            val studentName = userProfile.displayName.ifBlank { "Dr. Sharma" }
             val doctorTitle = if (studentName.startsWith("Dr.", ignoreCase = true)) studentName else "Dr. $studentName"
 
             val topSubjectInfo = metrics.topSubject?.let { (subject, mins) ->

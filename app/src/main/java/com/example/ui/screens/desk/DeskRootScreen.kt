@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -83,6 +84,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -99,6 +101,7 @@ import com.example.data.model.VaultEntity
 import com.example.data.schedule.model.ReadingSession
 import com.example.ui.components.ContributionLiveStatusCard
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.fluidGlassPressEffect
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
@@ -390,29 +393,19 @@ fun DeskRootScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(availableSubjects) { subject ->
-                                    val isSelected = selectedSubject == subject
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = if (isSelected) colors.primary.copy(alpha = 0.22f) else colors.surfaceCard,
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            if (isSelected) colors.primary else colors.borderSubtle
-                                        ),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .clickable { selectedSubject = subject }
-                                            .testTag("desk_subject_chip_wide_$subject")
-                                    ) {
-                                        Text(
-                                            text = subject,
-                                            fontFamily = InterFamily,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 12.5.sp,
-                                            color = if (isSelected) colors.primary else colors.textSecondary,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                        )
-                                    }
+                                items(
+                                    items = availableSubjects,
+                                    key = { subject -> "desk_chip_wide_$subject" }
+                                ) { subject ->
+                                    val isSelected = selectedSubject.equals(subject, ignoreCase = true)
+                                    DeskSubjectFilterChip(
+                                        label = subject,
+                                        isSelected = isSelected,
+                                        testTag = "desk_subject_chip_wide_$subject",
+                                        onClick = {
+                                            selectedSubject = if (isSelected && subject != "All") "All" else subject
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -592,29 +585,19 @@ fun DeskRootScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(availableSubjects) { subject ->
-                                val isSelected = selectedSubject == subject
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = if (isSelected) colors.primary.copy(alpha = 0.22f) else colors.surfaceCard,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (isSelected) colors.primary else colors.borderSubtle
-                                    ),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { selectedSubject = subject }
-                                        .testTag("desk_subject_chip_$subject")
-                                ) {
-                                    Text(
-                                        text = subject,
-                                        fontFamily = InterFamily,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        fontSize = 12.5.sp,
-                                        color = if (isSelected) colors.primary else colors.textSecondary,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                    )
-                                }
+                            items(
+                                items = availableSubjects,
+                                key = { subject -> "desk_chip_$subject" }
+                            ) { subject ->
+                                val isSelected = selectedSubject.equals(subject, ignoreCase = true)
+                                DeskSubjectFilterChip(
+                                    label = subject,
+                                    isSelected = isSelected,
+                                    testTag = "desk_subject_chip_$subject",
+                                    onClick = {
+                                        selectedSubject = if (isSelected && subject != "All") "All" else subject
+                                    }
+                                )
                             }
                         }
                     }
@@ -681,7 +664,7 @@ fun DeskRootScreen(
                 }
 
                 item(key = "bottom_spacer") {
-                    Spacer(modifier = Modifier.height(60.dp))
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
             }
         }
@@ -990,8 +973,94 @@ private fun DeskTopAppBar(
         userProfile = userProfile,
         onProfileClick = onProfileClick,
         modifier = Modifier.statusBarsPadding(),
+        showGlassBackground = true,
         avatarTestTag = "desk_profile_avatar_button"
     )
+}
+
+@Composable
+private fun DeskSubjectFilterChip(
+    label: String,
+    isSelected: Boolean,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    val colors = LocalMulberryColors.current
+
+    val topBgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary.copy(alpha = 0.96f)
+        } else {
+            if (colors.isDark) colors.surfaceCard.copy(alpha = 0.85f)
+            else colors.surfaceTint.copy(alpha = 0.72f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "desk_chip_top_bg"
+    )
+
+    val bottomBgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary.copy(alpha = 0.88f)
+        } else {
+            if (colors.isDark) colors.surface.copy(alpha = 0.78f)
+            else colors.surfaceCard.copy(alpha = 0.92f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "desk_chip_bottom_bg"
+    )
+
+    val topBorderColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            Color.White.copy(alpha = if (colors.isDark) 0.45f else 0.72f)
+        } else {
+            if (colors.isDark) Color.White.copy(alpha = 0.22f)
+            else colors.primary.copy(alpha = 0.30f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "desk_chip_top_border"
+    )
+
+    val bottomBorderColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary
+        } else {
+            colors.borderSubtle.copy(alpha = if (colors.isDark) 0.70f else 0.95f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "desk_chip_bottom_border"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) Color.White else colors.textPrimary.copy(alpha = 0.85f),
+        animationSpec = tween(durationMillis = 200),
+        label = "desk_chip_text"
+    )
+
+    Box(
+        modifier = Modifier
+            .testTag(testTag)
+            .fluidGlassPressEffect(onClick = onClick)
+            .clip(CircleShape)
+            .background(
+                brush = Brush.verticalGradient(listOf(topBgColor, bottomBgColor)),
+                shape = CircleShape
+            )
+            .border(
+                width = if (isSelected) 1.25.dp else 1.dp,
+                brush = Brush.verticalGradient(listOf(topBorderColor, bottomBorderColor)),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontFamily = InterFamily,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 12.5.sp,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+        )
+    }
 }
 
 private fun getInitials(name: String): String {

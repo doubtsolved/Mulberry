@@ -63,8 +63,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.GlassVariant
 import com.example.ui.components.MulberryExpressiveLogo
 import com.example.ui.components.fluidGlassPressEffect
+import com.example.ui.components.glassEffect
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.MulberryTheme
 import com.example.ui.theme.PoppinsFamily
@@ -200,55 +202,77 @@ fun ElasticGlassBottomBar(
     val stretchScaleX = 1f + (distance / (targetWidth.coerceAtLeast(80f) * 2.2f)).coerceIn(0f, 0.22f)
     val movingRight = targetOffset >= offsetAnimatable.value
 
-    // Translucent frosted glass rim gradient border
-    val glassBorderBrush = remember(colors.isDark, colors.borderSubtle) {
-        Brush.verticalGradient(
+    // Optical refraction chromatic dispersion gradient border (light-bending prism edge)
+    val refractivePrismBrush = remember(colors.isDark, colors.primary, colors.borderSubtle) {
+        Brush.sweepGradient(
             colors = listOf(
-                if (colors.isDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.65f),
-                colors.borderSubtle.copy(alpha = 0.40f)
+                if (colors.isDark) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.75f),
+                colors.primary.copy(alpha = 0.30f),
+                if (colors.isDark) Color(0xFF67E8F9).copy(alpha = 0.22f) else Color(0xFF06B6D4).copy(alpha = 0.32f),
+                colors.borderSubtle.copy(alpha = 0.35f),
+                if (colors.isDark) Color(0xFFFDE047).copy(alpha = 0.18f) else Color(0xFFF59E0B).copy(alpha = 0.22f),
+                if (colors.isDark) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.75f)
             )
         )
     }
 
-    // Specular top rim light reflection
-    val rimLightBrush = remember(colors.isDark) {
+    // Caustic internal refraction sheen
+    val causticSheenBrush = remember(colors.isDark, colors.primary) {
+        Brush.verticalGradient(
+            0.0f to (if (colors.isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.48f)),
+            0.45f to colors.primary.copy(alpha = 0.08f),
+            1.0f to Color.Transparent
+        )
+    }
+
+    // Translucent glass pill gradient with soft blur depth and specular reflection
+    val pillGlassBrush = remember(colors.surfaceCard, colors.surface, colors.primary) {
         Brush.verticalGradient(
             colors = listOf(
-                if (colors.isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f),
-                Color.Transparent
+                colors.surfaceCard.copy(alpha = 0.65f),
+                colors.surface.copy(alpha = 0.45f),
+                colors.surfaceCard.copy(alpha = 0.55f)
             )
         )
     }
 
-    // Floating pill container with 16.dp horizontal & 16.dp bottom margin (preserving WindowInsets.navigationBars)
+    val pillGlowBorder = remember(colors.isDark, colors.primary) {
+        Brush.verticalGradient(
+            colors = listOf(
+                if (colors.isDark) Color.White.copy(alpha = 0.50f) else Color.White.copy(alpha = 0.85f),
+                colors.primary.copy(alpha = 0.45f)
+            )
+        )
+    }
+
+    // Floating dock container with 16.dp horizontal & 12.dp bottom margin (floating freely above system navigation bars)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Multi-layered frosted glass dock surface (70% opacity with ambient shadow & rim light)
-        Surface(
-            shape = CircleShape,
-            color = colors.surface.copy(alpha = 0.70f),
-            border = BorderStroke(1.dp, glassBorderBrush),
-            shadowElevation = 12.dp,
+        // Multi-layered refractive frosted glass dock surface (70% opacity with prism border & caustic light sheen)
+        Box(
             modifier = Modifier
                 .widthIn(max = 480.dp)
                 .fillMaxWidth()
                 .height(64.dp)
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = 14.dp,
                     shape = CircleShape,
-                    spotColor = colors.primary.copy(alpha = 0.20f),
+                    spotColor = colors.primary.copy(alpha = 0.22f),
                     ambientColor = Color.Black.copy(alpha = 0.20f)
                 )
+                .clip(CircleShape)
+                .background(colors.surface.copy(alpha = 0.70f), CircleShape)
+                .border(1.dp, refractivePrismBrush, CircleShape)
                 .drawBehind {
-                    // Specular frosted glass upper highlight sheen
+                    // Refractive caustic internal sheen
                     drawRoundRect(
-                        brush = rimLightBrush,
-                        size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.5f),
+                        brush = causticSheenBrush,
+                        size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.55f),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f, size.height / 2f)
                     )
                 }
@@ -258,7 +282,7 @@ fun ElasticGlassBottomBar(
                     .fillMaxSize()
                     .padding(horizontal = 6.dp, vertical = 6.dp)
             ) {
-                // 1. Sliding Elastic Liquid Pill Indicator strictly styled to active theme colors
+                // 1. Sliding Elastic Liquid Pill Indicator with optical blur translucency
                 if (hasInitializedTarget) {
                     Box(
                         modifier = Modifier
@@ -273,13 +297,32 @@ fun ElasticGlassBottomBar(
                                 )
                             }
                             .clip(CircleShape)
-                            // Theme surface card tint with crisp primary outline
-                            .background(colors.surfaceCard.copy(alpha = 0.92f))
+                            .shadow(
+                                elevation = 6.dp,
+                                shape = CircleShape,
+                                spotColor = colors.primary.copy(alpha = 0.25f),
+                                ambientColor = Color.Black.copy(alpha = 0.10f)
+                            )
+                            // Translucent blurred glass lens background
+                            .background(pillGlassBrush)
                             .border(
                                 width = 1.dp,
-                                color = colors.primary.copy(alpha = 0.35f),
+                                brush = pillGlowBorder,
                                 shape = CircleShape
                             )
+                            .drawBehind {
+                                // Inner specular refraction sheen on top half of pill
+                                drawRoundRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = if (colors.isDark) 0.22f else 0.55f),
+                                            Color.Transparent
+                                        )
+                                    ),
+                                    size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.48f),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f, size.height / 2f)
+                                )
+                            }
                     )
                 }
 

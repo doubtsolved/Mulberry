@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -370,55 +371,47 @@ fun MulberryApp(viewModel: MulberryViewModel) {
                 }
             }
         } else {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                bottomBar = {
-                    if (showBottomBar) {
-                        MulberryBottomNavBar(
-                            selectedTab = currentTab,
-                            onTabSelected = { tab ->
-                                viewModel.setTab(tab)
-                                val targetIndex = visibleTabs.indexOf(tab)
-                                if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
-                                    coroutineScope.launch {
-                                        pagerState.scrollToPage(targetIndex)
-                                    }
-                                }
-                            },
-                            tabs = visibleTabs,
-                            onTabLongClick = { viewModel.openCustomizeTabsSheet() }
+            Box(modifier = Modifier.fillMaxSize()) {
+                HorizontalPager(
+                    state = pagerState,
+                    userScrollEnabled = canSwipeSideways,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { pageIndex ->
+                    val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.DESK
+                    when (tab) {
+                        MulberryTab.DESK -> DeskRootScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            onDeskAtHomeChanged = { isDeskAtHome = it },
+                            onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
+                        )
+                        MulberryTab.LIBRARY -> LibraryScreen(
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        MulberryTab.SETTINGS -> SettingsScreen(
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
-                ) {
-                    HorizontalPager(
-                        state = pagerState,
-                        userScrollEnabled = canSwipeSideways,
-                        modifier = Modifier.fillMaxSize(),
-                        beyondViewportPageCount = 1
-                    ) { pageIndex ->
-                        val tab = visibleTabs.getOrNull(pageIndex) ?: MulberryTab.DESK
-                        when (tab) {
-                            MulberryTab.DESK -> DeskRootScreen(
-                                modifier = Modifier.fillMaxSize(),
-                                onDeskAtHomeChanged = { isDeskAtHome = it },
-                                onNavigateToLibrary = { viewModel.setTab(MulberryTab.LIBRARY) }
-                            )
-                            MulberryTab.LIBRARY -> LibraryScreen(
-                                viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            MulberryTab.SETTINGS -> SettingsScreen(
-                                viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
+
+                if (showBottomBar) {
+                    MulberryBottomNavBar(
+                        selectedTab = currentTab,
+                        onTabSelected = { tab ->
+                            viewModel.setTab(tab)
+                            val targetIndex = visibleTabs.indexOf(tab)
+                            if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
+                                coroutineScope.launch {
+                                    pagerState.scrollToPage(targetIndex)
+                                }
+                            }
+                        },
+                        tabs = visibleTabs,
+                        onTabLongClick = { viewModel.openCustomizeTabsSheet() },
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         }

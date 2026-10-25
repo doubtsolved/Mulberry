@@ -208,7 +208,7 @@ class ReaderActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val prefs = getSharedPreferences("mulberry_prefs", Context.MODE_PRIVATE)
-        val savedTheme = prefs.getString("theme_mode", ThemeMode.PAPER.name)
+        val savedTheme = prefs.getString("theme_mode", ThemeMode.OLDED.name)
         activeTheme = ThemeMode.from(savedTheme)
         ReaderPreferencesManager.init(applicationContext)
 

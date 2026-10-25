@@ -36,7 +36,7 @@ object MulberryTheme {
 
 @Composable
 fun MulberryTheme(
-    themeMode: ThemeMode = ThemeMode.LIGHT,
+    themeMode: ThemeMode = ThemeMode.OLDED,
     content: @Composable () -> Unit
 ) {
     val mulberryPalette = when (themeMode) {

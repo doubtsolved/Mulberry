@@ -17,6 +17,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -56,7 +57,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.ui.components.fluidGlassPressEffect
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,6 +80,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -99,6 +100,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.BookEntity
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.GlassVariant
+import com.example.ui.components.fluidGlassPressEffect
+import com.example.ui.components.glassEffect
+import com.example.ui.components.refractiveHeaderGlass
 import com.example.ui.reader.ReaderActivity
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
@@ -361,7 +366,6 @@ fun LibraryScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.backgroundGradient)
-            .statusBarsPadding()
     ) {
         val configuration = LocalConfiguration.current
         val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -627,115 +631,128 @@ private fun LibraryMainShelfContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // 1. TOP HEADER ("Mulberry Shelf") with Expressive Logo & Tier-Outlined Profile Avatar
-        com.example.ui.components.MulberryUnifiedHeader(
-            title = "Mulberry Shelf",
-            userProfile = userProfile,
-            onProfileClick = onProfileClick,
-            titleTestTag = "mulberry_shelf_title",
-            avatarTestTag = "library_profile_avatar_button"
-        )
-
-        // 2. FULL-WIDTH SEARCH BAR ROW
-        Row(
+        // Unified Translucent Refractive Top Header Region (Title + Search + Subject Filter Pills)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .refractiveHeaderGlass()
+                .statusBarsPadding()
+                .padding(bottom = 6.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = colors.surfaceCard,
-                border = BorderStroke(1.dp, colors.borderSubtle),
+            // 1. TOP HEADER ("Mulberry Shelf") with Expressive Logo & Tier-Outlined Profile Avatar
+            com.example.ui.components.MulberryUnifiedHeader(
+                title = "Mulberry Shelf",
+                userProfile = userProfile,
+                onProfileClick = onProfileClick,
+                showGlassBackground = false,
+                titleTestTag = "mulberry_shelf_title",
+                avatarTestTag = "library_profile_avatar_button"
+            )
+
+            // 2. FULL-WIDTH SEARCH BAR ROW
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp)
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = colors.surfaceCard.copy(alpha = if (colors.isDark) 0.78f else 0.88f),
+                    border = BorderStroke(1.dp, colors.borderSubtle),
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth()
+                        .height(46.dp)
                 ) {
-                    Icon(
-                        imageVector = FluentIcons.Search24Regular,
-                        contentDescription = "Search",
-                        tint = colors.textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = onSearchQueryChange,
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .testTag("search_textbooks_input"),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { onClearFocus() }),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = colors.textPrimary,
-                            fontFamily = InterFamily,
-                            fontSize = 13.5.sp
-                        ),
-                        cursorBrush = SolidColor(colors.primary),
-                        decorationBox = { innerTextField ->
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search by tag, subject, book, or author...",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        color = colors.textSecondary.copy(alpha = 0.7f),
-                                        fontFamily = InterFamily,
-                                        fontSize = 13.5.sp
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = FluentIcons.Search24Regular,
+                            contentDescription = "Search",
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = onSearchQueryChange,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("search_textbooks_input"),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { onClearFocus() }),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = colors.textPrimary,
+                                fontFamily = InterFamily,
+                                fontSize = 13.5.sp
+                            ),
+                            cursorBrush = SolidColor(colors.primary),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search by tag, subject, book, or author...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = colors.textSecondary.copy(alpha = 0.7f),
+                                            fontFamily = InterFamily,
+                                            fontSize = 13.5.sp
+                                        )
                                     )
+                                }
+                                innerTextField()
+                            }
+                        )
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { onSearchQueryChange("") },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    imageVector = FluentIcons.Dismiss24Regular,
+                                    contentDescription = "Clear",
+                                    tint = colors.textSecondary,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
-                            innerTextField()
-                        }
-                    )
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(
-                            onClick = { onSearchQueryChange("") },
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Icon(
-                                imageVector = FluentIcons.Dismiss24Regular,
-                                contentDescription = "Clear",
-                                tint = colors.textSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
                         }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-        // 3. HORIZONTAL SUBJECT FILTER CHIPS ROW
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            item {
-                val isSelected = selectedSubject == "All"
-                SubjectFilterChip(
-                    label = "All",
-                    isSelected = isSelected,
-                    onClick = { onSelectedSubjectChange("All") }
-                )
-            }
+            // 3. HORIZONTAL SUBJECT FILTER CHIPS ROW
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item(key = "subject_chip_all") {
+                    val isSelected = selectedSubject == "All"
+                    SubjectFilterChip(
+                        label = "All",
+                        isSelected = isSelected,
+                        onClick = { onSelectedSubjectChange("All") }
+                    )
+                }
 
-            items(selectedProf.subjects) { subject ->
-                val isSelected = selectedSubject == subject
-                SubjectFilterChip(
-                    label = subject,
-                    isSelected = isSelected,
-                    onClick = {
-                        onSelectedSubjectChange(if (isSelected) "All" else subject)
-                    }
-                )
+                items(
+                    items = selectedProf.subjects,
+                    key = { subject -> "subject_chip_$subject" }
+                ) { subject ->
+                    val isSelected = selectedSubject.equals(subject, ignoreCase = true)
+                    SubjectFilterChip(
+                        label = subject,
+                        isSelected = isSelected,
+                        onClick = {
+                            onSelectedSubjectChange(if (isSelected) "All" else subject)
+                        }
+                    )
+                }
             }
         }
 
@@ -857,10 +874,12 @@ private fun DedicatedCategoryScreen(
             .fillMaxSize()
             .background(colors.backgroundGradient)
     ) {
-        // Category Top App Bar
+        // Category Top App Bar with Translucent Refractive Glass
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .refractiveHeaderGlass()
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -894,8 +913,6 @@ private fun DedicatedCategoryScreen(
                 )
             }
         }
-
-        HorizontalDivider(color = colors.borderSubtle, thickness = 0.5.dp)
 
         // 2-Column Vertical Grid for smooth vertical browsing
         LazyVerticalGrid(
@@ -933,10 +950,12 @@ private fun ExpandedCategoryPane(
         modifier = modifier
             .background(colors.backgroundGradient)
     ) {
-        // Supporting Pane Header with Close Action
+        // Supporting Pane Header with Close Action & Refractive Glass
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .refractiveHeaderGlass()
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -974,8 +993,6 @@ private fun ExpandedCategoryPane(
             }
         }
 
-        HorizontalDivider(color = colors.borderSubtle, thickness = 0.5.dp)
-
         // Adaptive Multi-Column Grid
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 136.dp),
@@ -997,6 +1014,8 @@ private fun ExpandedCategoryPane(
 
 /**
  * Filter Chip Pill for Subject Selection.
+ * Uses smooth color transitions and stable modifier structure so selecting/deselecting
+ * never loses color or gets stuck in an intermediate state.
  */
 @Composable
 private fun SubjectFilterChip(
@@ -1006,25 +1025,77 @@ private fun SubjectFilterChip(
 ) {
     val colors = LocalMulberryColors.current
 
-    Surface(
-        shape = CircleShape,
-        color = if (isSelected) colors.surfaceCard.copy(alpha = 0.92f) else colors.surface.copy(alpha = 0.65f),
-        border = BorderStroke(
-            1.dp,
-            if (isSelected) colors.primary.copy(alpha = 0.45f) else colors.borderSubtle.copy(alpha = 0.40f)
-        ),
-        shadowElevation = if (isSelected) 4.dp else 0.dp,
+    val topBgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary.copy(alpha = 0.96f)
+        } else {
+            if (colors.isDark) colors.surfaceCard.copy(alpha = 0.85f)
+            else colors.surfaceTint.copy(alpha = 0.72f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "chip_top_bg"
+    )
+
+    val bottomBgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary.copy(alpha = 0.88f)
+        } else {
+            if (colors.isDark) colors.surface.copy(alpha = 0.78f)
+            else colors.surfaceCard.copy(alpha = 0.92f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "chip_bottom_bg"
+    )
+
+    val topBorderColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            Color.White.copy(alpha = if (colors.isDark) 0.45f else 0.72f)
+        } else {
+            if (colors.isDark) Color.White.copy(alpha = 0.22f)
+            else colors.primary.copy(alpha = 0.30f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "chip_top_border"
+    )
+
+    val bottomBorderColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            colors.primary
+        } else {
+            colors.borderSubtle.copy(alpha = if (colors.isDark) 0.70f else 0.95f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "chip_bottom_border"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) Color.White else colors.textPrimary.copy(alpha = 0.85f),
+        animationSpec = tween(durationMillis = 200),
+        label = "chip_text_color"
+    )
+
+    Box(
         modifier = Modifier
-            .clip(CircleShape)
-            .fluidGlassPressEffect(onClick = onClick)
             .testTag("subject_chip_$label")
+            .fluidGlassPressEffect(onClick = onClick)
+            .clip(CircleShape)
+            .background(
+                brush = Brush.verticalGradient(listOf(topBgColor, bottomBgColor)),
+                shape = CircleShape
+            )
+            .border(
+                width = if (isSelected) 1.25.dp else 1.dp,
+                brush = Brush.verticalGradient(listOf(topBorderColor, bottomBorderColor)),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
             fontFamily = InterFamily,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             fontSize = 13.sp,
-            color = if (isSelected) colors.primary else colors.textSecondary,
+            color = textColor,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
         )
     }

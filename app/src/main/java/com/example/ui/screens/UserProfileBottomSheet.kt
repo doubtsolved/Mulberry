@@ -562,6 +562,7 @@ private fun ProfileEditContent(
     val colors = LocalMulberryColors.current
 
     var displayName by remember(userProfile) { mutableStateOf(userProfile.displayName) }
+    var gender by remember(userProfile) { mutableStateOf(userProfile.gender) }
     var selectedProf by remember(userProfile) { mutableStateOf(userProfile.selectedProf) }
     var institution by remember(userProfile) { mutableStateOf(userProfile.institution) }
 
@@ -645,7 +646,7 @@ private fun ProfileEditContent(
             value = displayName,
             onValueChange = { displayName = it },
             label = { Text("Display Name") },
-            placeholder = { Text("e.g., Sahabul") },
+            placeholder = { Text("e.g., Dr. Sharma") },
             leadingIcon = {
                 Icon(imageVector = FluentIcons.Person24Regular, contentDescription = null, modifier = Modifier.size(18.dp))
             },
@@ -718,7 +719,28 @@ private fun ProfileEditContent(
             }
         }
 
-        // 3. Institution / College (Optional)
+        // 3. Gender
+        OutlinedTextField(
+            value = gender,
+            onValueChange = { gender = it },
+            label = { Text("Gender") },
+            placeholder = { Text("e.g., Male, Female, Non-binary") },
+            leadingIcon = {
+                Icon(imageVector = FluentIcons.Person24Regular, contentDescription = null, modifier = Modifier.size(18.dp))
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next
+            ),
+            colors = textFieldColors,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("profile_gender_input")
+        )
+
+        // 4. Institution / College (Optional)
         OutlinedTextField(
             value = institution,
             onValueChange = { institution = it },
@@ -740,6 +762,8 @@ private fun ProfileEditContent(
         )
 
         Spacer(modifier = Modifier.height(6.dp))
+
+        val canSave = displayName.trim().isNotBlank() && gender.trim().isNotBlank()
 
         // Actions: Cancel & Save Changes
         Row(
@@ -768,13 +792,15 @@ private fun ProfileEditContent(
                     val prof = MBBS_CURRICULUM.find { it.id.equals(selectedProf, ignoreCase = true) }
                         ?: MBBS_CURRICULUM[0]
                     val updated = userProfile.copy(
-                        displayName = displayName.trim().ifEmpty { "Sahabul" },
+                        displayName = displayName.trim().ifEmpty { "Dr. Sharma" },
+                        gender = gender.trim(),
                         institution = institution.trim(),
                         selectedProf = prof.id,
                         targetExamOrSubject = prof.title
                     )
                     onSave(updated)
                 },
+                enabled = canSave,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                 modifier = Modifier

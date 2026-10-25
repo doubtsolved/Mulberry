@@ -124,7 +124,7 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
 
     // Global Theme persisted in SharedPreferences
     private val _themeMode = MutableStateFlow(
-        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.PAPER.name))
+        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.OLDED.name))
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 

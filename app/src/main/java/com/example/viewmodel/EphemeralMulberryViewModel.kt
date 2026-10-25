@@ -81,7 +81,7 @@ class EphemeralMulberryViewModel(application: Application) : AndroidViewModel(ap
     // Theme & IconStyle preferences
     private val prefs = application.getSharedPreferences("mulberry_prefs", Application.MODE_PRIVATE)
     private val _themeMode = MutableStateFlow(
-        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.PAPER.name))
+        ThemeMode.from(prefs.getString("theme_mode", ThemeMode.OLDED.name))
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 

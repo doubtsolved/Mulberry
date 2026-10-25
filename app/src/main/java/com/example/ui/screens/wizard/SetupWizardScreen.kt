@@ -72,7 +72,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.example.ui.components.FluidGlassDefaults
+import com.example.ui.components.FluidGlassPrimaryButton
+import com.example.ui.components.FluidGlassSecondaryButton
+import com.example.ui.components.GlassVariant
 import com.example.ui.components.fluidGlassPressEffect
+import com.example.ui.components.glassEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -113,7 +117,10 @@ fun SetupWizardScreen(
     var currentStep by remember { mutableStateOf(WizardStep.INTRODUCE) }
 
     // Transient form states for Step 2
-    var displayName by remember(userProfile) { mutableStateOf(userProfile.displayName) }
+    var displayName by remember(userProfile) {
+        mutableStateOf(if (userProfile.displayName == "Dr. Sharma" || userProfile.displayName == "Sahabul") "" else userProfile.displayName)
+    }
+    var gender by remember(userProfile) { mutableStateOf(userProfile.gender) }
     var institution by remember(userProfile) { mutableStateOf(userProfile.institution) }
     var selectedProf by remember(userProfile) { mutableStateOf(userProfile.selectedProf) }
 
@@ -150,6 +157,8 @@ fun SetupWizardScreen(
                         ProfileSetupScreen(
                             displayName = displayName,
                             onDisplayNameChange = { displayName = it },
+                            gender = gender,
+                            onGenderChange = { gender = it },
                             institution = institution,
                             onInstitutionChange = { institution = it },
                             selectedProf = selectedProf,
@@ -159,7 +168,8 @@ fun SetupWizardScreen(
                                 val profCurriculum = MBBS_CURRICULUM.find { it.id.equals(selectedProf, ignoreCase = true) }
                                     ?: MBBS_CURRICULUM[0]
                                 val updated = userProfile.copy(
-                                    displayName = displayName.trim().ifEmpty { "Sahabul" },
+                                    displayName = displayName.trim().ifEmpty { "Dr. Sharma" },
+                                    gender = gender.trim(),
                                     institution = institution.trim(),
                                     selectedProf = profCurriculum.id,
                                     targetExamOrSubject = profCurriculum.title
@@ -185,7 +195,8 @@ fun SetupWizardScreen(
                                 MulberryAnalytics.logProfileRegistered(
                                     name = currentProfile.displayName,
                                     college = currentProfile.institution,
-                                    prof = currentProfile.selectedProf
+                                    prof = currentProfile.selectedProf,
+                                    gender = currentProfile.gender
                                 )
                                 onFinish()
                             }
@@ -325,15 +336,11 @@ private fun ShimmeringGetStartedButton(
         label = "SweepProgress"
     )
 
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = colors.primary,
-        border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
-        shadowElevation = 8.dp,
+    Box(
         modifier = modifier
+            .fillMaxWidth()
             .height(52.dp)
-            .shadow(elevation = 8.dp, shape = RoundedCornerShape(16.dp), spotColor = colors.primary.copy(alpha = 0.35f))
-            .clip(RoundedCornerShape(16.dp))
+            .glassEffect(variant = GlassVariant.PRIMARY, shape = RoundedCornerShape(16.dp))
             .fluidGlassPressEffect(onClick = onClick)
             .drawWithContent {
                 drawContent()
@@ -343,9 +350,9 @@ private fun ShimmeringGetStartedButton(
                     brush = Brush.linearGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.White.copy(alpha = 0.25f),
-                            Color.White.copy(alpha = 0.55f),
-                            Color.White.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.20f),
+                            Color.White.copy(alpha = 0.50f),
+                            Color.White.copy(alpha = 0.20f),
                             Color.Transparent
                         ),
                         start = Offset(startX, 0f),
@@ -353,10 +360,13 @@ private fun ShimmeringGetStartedButton(
                     )
                 )
             }
-            .testTag("wizard_get_started_button")
+            .testTag("wizard_get_started_button"),
+        contentAlignment = Alignment.Center
     ) {
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -387,6 +397,8 @@ private fun ShimmeringGetStartedButton(
 private fun ProfileSetupScreen(
     displayName: String,
     onDisplayNameChange: (String) -> Unit,
+    gender: String,
+    onGenderChange: (String) -> Unit,
     institution: String,
     onInstitutionChange: (String) -> Unit,
     selectedProf: String,
@@ -476,7 +488,7 @@ private fun ProfileSetupScreen(
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = onDisplayNameChange,
-                    placeholder = { Text("Sahabul", color = colors.textMuted) },
+                    placeholder = { Text("Dr. Sharma", color = colors.textMuted) },
                     singleLine = true,
                     leadingIcon = {
                         Icon(
@@ -559,7 +571,46 @@ private fun ProfileSetupScreen(
                 }
             }
 
-            // 3. INSTITUTION · OPTIONAL
+            // 3. GENDER
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "GENDER",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    color = colors.textSecondary,
+                    letterSpacing = 0.8.sp
+                )
+
+                OutlinedTextField(
+                    value = gender,
+                    onValueChange = onGenderChange,
+                    placeholder = { Text("e.g., Male, Female, Non-binary", color = colors.textMuted) },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = FluentIcons.Person24Regular,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.borderSubtle,
+                        focusedContainerColor = colors.surfaceCard,
+                        unfocusedContainerColor = colors.surfaceCard,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("wizard_gender_input")
+                )
+            }
+
+            // 4. INSTITUTION · OPTIONAL
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = "INSTITUTION · OPTIONAL",
@@ -601,62 +652,29 @@ private fun ProfileSetupScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
+        val canContinue = displayName.trim().isNotBlank() && gender.trim().isNotBlank()
+
         // Bottom CTA Buttons: Back & Continue ->
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = colors.surface.copy(alpha = 0.70f),
-                border = BorderStroke(1.dp, FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)),
-                shadowElevation = 2.dp,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .fluidGlassPressEffect(onClick = onBack)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
-                }
-            }
+            FluidGlassSecondaryButton(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier.weight(1f),
+                testTag = "wizard_back_button"
+            )
 
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = colors.primary,
-                border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .weight(1.8f)
-                    .height(50.dp)
-                    .shadow(elevation = 8.dp, shape = RoundedCornerShape(14.dp), spotColor = colors.primary.copy(alpha = 0.40f))
-                    .clip(RoundedCornerShape(14.dp))
-                    .fluidGlassPressEffect(onClick = onNext)
-                    .testTag("wizard_continue_button")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "Continue",
-                        fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = FluentIcons.ArrowRight24Regular,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+            FluidGlassPrimaryButton(
+                text = "Continue",
+                onClick = onNext,
+                enabled = canContinue,
+                trailingIcon = FluentIcons.ArrowRight24Regular,
+                modifier = Modifier.weight(1.8f),
+                testTag = "wizard_continue_button"
+            )
         }
     }
 }
@@ -880,29 +898,22 @@ private fun PermissionsScreen(
                             }
                         }
                     } else {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = colors.primary,
-                            border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
-                            shadowElevation = 4.dp,
+                        Box(
                             modifier = Modifier
                                 .height(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .glassEffect(variant = GlassVariant.PRIMARY, shape = RoundedCornerShape(10.dp))
                                 .fluidGlassPressEffect(onClick = { requestStorageAccess() })
-                                .testTag("wizard_allow_storage_button")
+                                .padding(horizontal = 14.dp)
+                                .testTag("wizard_allow_storage_button"),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 14.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Allow",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    color = Color.White
-                                )
-                            }
+                            Text(
+                                text = "Allow",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                color = Color.White
+                            )
                         }
                     }
                 }
@@ -988,29 +999,22 @@ private fun PermissionsScreen(
                             }
                         }
                     } else {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = colors.primary,
-                            border = BorderStroke(1.dp, FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)),
-                            shadowElevation = 4.dp,
+                        Box(
                             modifier = Modifier
                                 .height(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .glassEffect(variant = GlassVariant.PRIMARY, shape = RoundedCornerShape(10.dp))
                                 .fluidGlassPressEffect(onClick = { requestNotificationAccess() })
-                                .testTag("wizard_allow_notifications_button")
+                                .padding(horizontal = 14.dp)
+                                .testTag("wizard_allow_notifications_button"),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 14.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Allow",
-                                    fontFamily = PoppinsFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    color = Color.White
-                                )
-                            }
+                            Text(
+                                text = "Allow",
+                                fontFamily = PoppinsFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                color = Color.White
+                            )
                         }
                     }
                 }
@@ -1023,66 +1027,21 @@ private fun PermissionsScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = colors.surface.copy(alpha = 0.70f),
-                border = BorderStroke(1.dp, FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)),
-                shadowElevation = 2.dp,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .fluidGlassPressEffect(onClick = onBack)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("Back", fontFamily = InterFamily, color = colors.textSecondary)
-                }
-            }
+            FluidGlassSecondaryButton(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier.weight(1f),
+                testTag = "wizard_perms_back_button"
+            )
 
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (canLaunch) colors.primary else colors.surfaceCard,
-                border = BorderStroke(
-                    1.dp,
-                    if (canLaunch) FluidGlassDefaults.activePillBorderBrush(colors.isDark, colors.primary)
-                    else FluidGlassDefaults.glassBorderBrush(colors.isDark, colors.borderSubtle)
-                ),
-                shadowElevation = if (canLaunch) 8.dp else 0.dp,
-                modifier = Modifier
-                    .weight(1.8f)
-                    .height(50.dp)
-                    .then(
-                        if (canLaunch) Modifier.shadow(
-                            elevation = 8.dp,
-                            shape = RoundedCornerShape(14.dp),
-                            spotColor = colors.primary.copy(alpha = 0.40f)
-                        ) else Modifier
-                    )
-                    .clip(RoundedCornerShape(14.dp))
-                    .fluidGlassPressEffect(enabled = canLaunch, onClick = onLaunchApp)
-                    .testTag("wizard_launch_app_button")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = FluentIcons.Play24Regular,
-                        contentDescription = null,
-                        tint = if (canLaunch) Color.White else colors.textMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Launch Mulberry",
-                        fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                        color = if (canLaunch) Color.White else colors.textMuted
-                    )
-                }
-            }
+            FluidGlassPrimaryButton(
+                text = "Launch Mulberry",
+                onClick = onLaunchApp,
+                leadingIcon = FluentIcons.Play24Regular,
+                enabled = canLaunch,
+                modifier = Modifier.weight(1.8f),
+                testTag = "wizard_launch_app_button"
+            )
         }
     }
 }
