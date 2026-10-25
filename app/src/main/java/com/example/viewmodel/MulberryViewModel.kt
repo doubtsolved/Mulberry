@@ -109,6 +109,25 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
     val userProfileRepository = UserProfileRepository.getInstance(application)
     val userProfile: StateFlow<UserProfile> = userProfileRepository.userProfile
 
+    val announcementRepository = com.example.data.repository.AnnouncementRepository.getInstance(application)
+    val allAnnouncements: StateFlow<List<com.example.data.repository.AnnouncementBanner>> = announcementRepository.allBanners
+    val activeAnnouncements: StateFlow<List<com.example.data.repository.AnnouncementBanner>> = combine(
+        announcementRepository.allBanners,
+        userProfile
+    ) { banners, profile ->
+        announcementRepository.filterBannersForProf(
+            banners = banners,
+            currentSelectedProf = profile.selectedProf
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = announcementRepository.filterBannersForProf(
+            banners = announcementRepository.allBanners.value,
+            currentSelectedProf = userProfile.value.selectedProf
+        )
+    )
+
     fun saveUserProfile(updated: UserProfile) {
         viewModelScope.launch {
             userProfileRepository.updateProfile(updated, activeVault.value?.rootPath)
@@ -480,7 +499,10 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
         syncJob = viewModelScope.launch(Dispatchers.IO) {
             _isSyncing.value = true
             try {
-                // 1. Sync remote catalog from edge CDN
+                // 1. Sync remote catalog and announcements from edge CDN
+                launch {
+                    runCatching { announcementRepository.fetchAnnouncements() }
+                }
                 repository.syncCatalog()
 
                 // 2. Sync active local vault if available
@@ -494,6 +516,12 @@ class MulberryViewModel(application: Application) : AndroidViewModel(application
             } finally {
                 _isSyncing.value = false
             }
+        }
+    }
+
+    fun refreshAnnouncements() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { announcementRepository.fetchAnnouncements() }
         }
     }
 

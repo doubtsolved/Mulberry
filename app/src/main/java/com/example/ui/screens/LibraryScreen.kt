@@ -2,8 +2,16 @@
 
 package com.example.ui.screens
 
+import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.pdf.PdfRenderer
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.mulberry.app.analytics.MulberryAnalytics
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -45,11 +53,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -76,6 +86,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,17 +110,24 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.BookEntity
+import com.example.data.repository.AnnouncementBanner
 import com.example.ui.components.FluentIcons
+import com.example.ui.components.FluidGlassPrimaryButton
 import com.example.ui.components.GlassVariant
+import com.example.ui.components.MulberryAnnouncementCarousel
 import com.example.ui.components.fluidGlassPressEffect
 import com.example.ui.components.glassEffect
 import com.example.ui.components.refractiveHeaderGlass
 import com.example.ui.reader.ReaderActivity
+import com.example.ui.screens.desk.AddToDeskBottomSheet
 import com.example.ui.theme.InterFamily
 import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.PoppinsFamily
 import com.example.util.DownloadProgressState
 import com.example.viewmodel.MulberryViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -244,6 +262,10 @@ fun LibraryScreen(
     val isSyncing by viewModel.isSyncing.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
+    val activeAnnouncements by viewModel.activeAnnouncements.collectAsState()
+
+    val coroutineScope = rememberCoroutineScope()
+    val shelfListState = rememberLazyListState()
 
     val selectedProf = remember(userProfile.selectedProf) {
         MBBS_CURRICULUM.find { it.id.equals(userProfile.selectedProf, ignoreCase = true) }
@@ -255,6 +277,7 @@ fun LibraryScreen(
     var selectedBookId by remember { mutableStateOf<String?>(null) }
     var expandedCategory by remember { mutableStateOf<String?>(null) }
     var showProfileModal by remember { mutableStateOf(false) }
+    var showContributeInfoSheet by remember { mutableStateOf(false) }
 
     val pendingNotificationSlug by viewModel.pendingNotificationBookSlug.collectAsState()
     LaunchedEffect(pendingNotificationSlug) {
@@ -279,11 +302,12 @@ fun LibraryScreen(
         expandedCategory = null
     }
 
-    // Auto-sync on resume
+    // Auto-sync catalog and announcements on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshAnnouncements()
                 viewModel.refreshLibrary()
             }
         }
@@ -371,6 +395,86 @@ fun LibraryScreen(
         val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
 
+        val handleBannerClick: (AnnouncementBanner) -> Unit = { banner ->
+            val actionType = banner.action.type.trim().uppercase()
+            val target = banner.action.target.trim()
+            when (actionType) {
+                "OPEN_BOOK" -> {
+                    if (target.isNotEmpty()) {
+                        // 1. Search currently filtered books first, then full unfiltered catalog
+                        val matchedBook = filteredBooks.find {
+                            it.slug.equals(target, ignoreCase = true) ||
+                                it.id.toString().equals(target, ignoreCase = true) ||
+                                it.title.equals(target, ignoreCase = true)
+                        } ?: books.find {
+                            it.slug.equals(target, ignoreCase = true) ||
+                                it.id.toString().equals(target, ignoreCase = true) ||
+                                it.title.equals(target, ignoreCase = true)
+                        }
+                        if (matchedBook != null) {
+                            selectedBookId = matchedBook.slug.ifEmpty { matchedBook.id.toString() }
+                        } else {
+                            Toast.makeText(context, "Book '$target' is not in the catalog yet", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                "FILTER_SUBJECT" -> {
+                    if (target.isNotEmpty()) {
+                        val matchedSubject = selectedProf.subjects.find {
+                            it.equals(target, ignoreCase = true)
+                        } ?: if (target.equals("All", ignoreCase = true)) "All" else target
+                        selectedSubject = matchedSubject
+                    }
+                }
+                "FILTER_CATEGORY" -> {
+                    if (target.isNotEmpty()) {
+                        val matchedInCurrent = categoryRows.indexOfFirst { (catName, _) ->
+                            catName.equals(target, ignoreCase = true) ||
+                                catName.contains(target, ignoreCase = true)
+                        }
+                        if (matchedInCurrent >= 0) {
+                            val catTitle = categoryRows[matchedInCurrent].first
+                            val showCarouselItem = searchQuery.isBlank() && activeAnnouncements.isNotEmpty()
+                            val headerItemIndex = (if (showCarouselItem) 1 else 0) + (matchedInCurrent * 2)
+                            coroutineScope.launch {
+                                runCatching { shelfListState.animateScrollToItem(headerItemIndex) }
+                            }
+                            expandedCategory = catTitle
+                        } else {
+                            // Reset subject filter if needed so the category appears
+                            selectedSubject = "All"
+                            val matchedAll = dynamicCategories.find {
+                                it.equals(target, ignoreCase = true) || it.contains(target, ignoreCase = true)
+                            } ?: OFFICIAL_CATALOG_TYPES.find {
+                                it.equals(target, ignoreCase = true) || it.contains(target, ignoreCase = true)
+                            }
+                            if (matchedAll != null) {
+                                expandedCategory = matchedAll
+                            }
+                        }
+                    }
+                }
+                "OPEN_URL" -> {
+                    if (target.startsWith("http://", ignoreCase = true) ||
+                        target.startsWith("https://", ignoreCase = true)
+                    ) {
+                        runCatching {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(browserIntent)
+                        }
+                    }
+                }
+                "OPEN_CONTRIBUTE" -> {
+                    showContributeInfoSheet = true
+                }
+                else -> {
+                    // NONE or unrecognized type: visual-only banner
+                }
+            }
+        }
+
         if (isWideScreen) {
             // RESPONSIVE DUAL-PANE VIEW FOR LANDSCAPE / LARGE SCREENS
             Row(modifier = Modifier.fillMaxSize()) {
@@ -396,6 +500,9 @@ fun LibraryScreen(
                             selectedProf = selectedProf,
                             selectedSubject = selectedSubject,
                             onSelectedSubjectChange = { selectedSubject = it },
+                            announcements = activeAnnouncements,
+                            onBannerClick = handleBannerClick,
+                            shelfListState = shelfListState,
                             categoryRows = categoryRows,
                             expandedCategory = expandedCategory,
                             onExpandCategory = { cat ->
@@ -539,6 +646,9 @@ fun LibraryScreen(
                             selectedProf = selectedProf,
                             selectedSubject = selectedSubject,
                             onSelectedSubjectChange = { selectedSubject = it },
+                            announcements = activeAnnouncements,
+                            onBannerClick = handleBannerClick,
+                            shelfListState = shelfListState,
                             categoryRows = categoryRows,
                             expandedCategory = null,
                             onExpandCategory = { expandedCategory = it },
@@ -608,10 +718,23 @@ fun LibraryScreen(
             }
         )
     }
+
+    // Contribute to Mulberry Modal Sheet (Triggered by OPEN_CONTRIBUTE banner action, synced with Settings)
+    if (showContributeInfoSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showContributeInfoSheet = false },
+            containerColor = colors.surfaceCard
+        ) {
+            ContributeSheetContent(
+                onDismiss = { showContributeInfoSheet = false }
+            )
+        }
+    }
 }
 
 /**
- * Main Shelf content containing the title, search bar, subject filter chips, and category shelves.
+ * Main Shelf content containing the title, search bar, subject filter chips,
+ * 16:6 Announcement Carousel, and category shelves.
  */
 @Composable
 private fun LibraryMainShelfContent(
@@ -623,6 +746,9 @@ private fun LibraryMainShelfContent(
     selectedProf: ProfCurriculum,
     selectedSubject: String,
     onSelectedSubjectChange: (String) -> Unit,
+    announcements: List<AnnouncementBanner>,
+    onBannerClick: (AnnouncementBanner) -> Unit,
+    shelfListState: LazyListState,
     categoryRows: List<Pair<String, List<BookEntity>>>,
     expandedCategory: String?,
     onExpandCategory: (String) -> Unit,
@@ -756,73 +882,96 @@ private fun LibraryMainShelfContent(
             }
         }
 
-        // 4. MAIN BODY - CATEGORY ROWS WITH EXPAND ACTION
+        // Visibility Rule: Hide carousel if filtered banner list is empty OR while user is typing a search query
+        val showAnnouncementCarousel = searchQuery.isBlank() && announcements.isNotEmpty()
+
+        // 4. MAIN BODY - ANNOUNCEMENT CAROUSEL + CATEGORY ROWS WITH EXPAND ACTION
         if (categoryRows.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (showAnnouncementCarousel) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    MulberryAnnouncementCarousel(
+                        banners = announcements,
+                        onBannerClick = onBannerClick
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.surfaceCard,
-                        border = BorderStroke(1.dp, colors.borderSubtle),
-                        modifier = Modifier.size(64.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = FluentIcons.Book24Regular,
-                                contentDescription = null,
-                                tint = colors.textSecondary.copy(alpha = 0.6f),
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = "No books found on shelf",
-                        fontFamily = PoppinsFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp,
-                        color = colors.textPrimary
-                    )
-                    Text(
-                        text = if (searchQuery.isNotBlank()) "No match for \"$searchQuery\" in ${selectedProf.shortName}"
-                        else "No textbooks currently cataloged under $selectedSubject",
-                        fontFamily = InterFamily,
-                        fontSize = 13.sp,
-                        color = colors.textSecondary,
-                        textAlign = TextAlign.Center
-                    )
-                    if (selectedSubject != "All" || searchQuery.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedButton(
-                            onClick = {
-                                onSelectedSubjectChange("All")
-                                onSearchQueryChange("")
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, colors.borderSubtle)
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.surfaceCard,
+                            border = BorderStroke(1.dp, colors.borderSubtle),
+                            modifier = Modifier.size(64.dp)
                         ) {
-                            Text(
-                                text = "Reset Filters",
-                                fontFamily = InterFamily,
-                                fontSize = 12.sp,
-                                color = colors.primary
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = FluentIcons.Book24Regular,
+                                    contentDescription = null,
+                                    tint = colors.textSecondary.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "No books found on shelf",
+                            fontFamily = PoppinsFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 17.sp,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No match for \"$searchQuery\" in ${selectedProf.shortName}"
+                            else "No textbooks currently cataloged under $selectedSubject",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = colors.textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        if (selectedSubject != "All" || searchQuery.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    onSelectedSubjectChange("All")
+                                    onSearchQueryChange("")
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, colors.borderSubtle)
+                            ) {
+                                Text(
+                                    text = "Reset Filters",
+                                    fontFamily = InterFamily,
+                                    fontSize = 12.sp,
+                                    color = colors.primary
+                                )
+                            }
                         }
                     }
                 }
             }
         } else {
             LazyColumn(
+                state = shelfListState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 90.dp)
+                contentPadding = PaddingValues(top = 6.dp, bottom = 90.dp)
             ) {
+                // Directly below Subject Filter Chips and directly above the first book category row
+                if (showAnnouncementCarousel) {
+                    item(key = "announcement_carousel_item") {
+                        MulberryAnnouncementCarousel(
+                            banners = announcements,
+                            onBannerClick = onBannerClick
+                        )
+                    }
+                }
+
                 categoryRows.forEach { (categoryName, categoryBooks) ->
                     item(key = "header_$categoryName") {
                         CategoryRowHeader(

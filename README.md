@@ -1,177 +1,151 @@
-# Mulberry 📖🌿
+# 🍇 Mulberry — The Medical Library & Study Companion
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4.svg?style=flat&logo=android)](https://developer.android.com/jetpack/compose)
-[![Min SDK](https://img.shields.io/badge/Min%20SDK-26-blue.svg)](https://developer.android.com/about/dashboards)
-[![Target SDK](https://img.shields.io/badge/Target%20SDK-35-green.svg)](https://developer.android.com)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Tablets%20%7C%20Foldables-orange.svg)](https://developer.android.com)
+[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=flat-square&logo=android&logoColor=white)](#)
+[![Stack](https://img.shields.io/badge/Stack-Kotlin%20%7C%20FastAPI%20%7C%20Cloudflare-purple?style=flat-square)](#)
+[![Vault](https://img.shields.io/badge/Vault-AES--256--GCM%20%7C%20HF%20LFS-yellow?style=flat-square)](#)
+[![Status](https://img.shields.io/badge/Version-v4.0--Stable-pink?style=flat-square)](#)
 
-> **Ergonomic Study Organizer & Native PDF Reader**  
-> Designed for medical scholars, academic researchers, and deep readers with distraction-free reading, vault-based library management, and integrated study planning.
+> *"Coded between dissection hall sessions and late-night viva prep."*  
+> Mulberry is an open, distraction-free medical textbook library, study desk, and offline vault designed specifically for MBBS students across 1st to Final Prof.
 
 ---
 
-## 🌟 Key Features
+## 🩺 The Philosophy
 
-### 📖 Immersive PDF Reader Engine
-- **Sleek Spring Controls Toggle**: Tapping the middle 60% of the screen smoothly animates the top bar up (`-100% Y`) and the bottom scrubber bar down (`+100% Y`) with spring easing (`Spring.DampingRatioLowBouncy`), while keeping the PDF viewport fixed with zero layout shifts or jitter.
-- **High-Definition Page Sharing**: A dedicated share button at the very end of the floating scrubber bar (following the page counter badge) renders the current open page at crisp **2.5x supersampled high definition** and immediately opens the native Android Share Sheet.
-- **Circle to Search Gesture**: Long-pressing anywhere on a document page emits tactile haptic feedback, displays an animated Google-colored circular lens ring, and activates **Google Circle to Search** (native Omnient Activity overlay with automatic fallback to system `ACTION_ASSIST` screenshot payload).
-- **One-Handed Navigation Zones**:
-  - **Left 20%**: Smoothly animates to the previous page.
-  - **Center 60%**: Toggles reader bars and system bars with spring animation.
-  - **Right 20%**: Smoothly animates to the next page.
-- **Fluid Gesture Zoom & Pan**:
-  - Double-tap animates zoom between 1.0x and 2.5x centered on touch coordinates.
-  - Pinch-to-zoom (up to 5.0x) with conditional gesture routing (single-finger swipes pass through to page turns when zoomed out).
-- **Fast Search & Navigation**:
-  - Live streaming full-text search with match counter badges and jump-to-result navigation.
-  - Interactive Table of Contents (TOC) with collapsible section hierarchies.
-  - Visual 2-state Thumbnail Grid Sheet for quick page browsing.
+Medical school backpacks are heavy, physical textbooks cost a fortune, and standard PDF readers aren't built for 1,200-page clinical treatises. Mulberry is built from the ground up by a medical student to make studying calmer, lighter, and completely accessible:
+
+- **Zero Clutter:** No intrusive ads, popups, or unnecessary bloat.
+- **Offline Vault:** Download once, read forever with instant page rendering.
+- **Built for Clinical Learning:** Dual-page reading for histology diagrams, Eye Comfort filters for 2 AM speedruns, and active revision tools.
 
 ---
 
-### 📂 Vault-Based Library Management
-- **Direct Disk Folder Binding**: Point Mulberry directly to your textbook directories without slow Storage Access Framework (SAF) IPC bottlenecks.
-- **Intelligent Title Sanitization**: Strips underscores, edition metadata, and hashes from messy filenames into clean, readable book titles.
-- **Automatic Cover Thumbnail Caching**: High-speed asynchronous cover generation with in-memory LRU caching.
-- **Zero Cloud Lock-in**: All reading progress, bookmarks, and syllabus tasks sync to a portable `.mulberry/` folder directly on disk.
+## ✨ Features at a Glance
+
+### 📚 Mulberry Shelf & Curated Catalog
+- **Academic Phases:** Filter seamlessly across **1st Prof**, **2nd Prof**, **3rd Prof Part 1**, and **Final Prof**.
+- **Specialty Categories:** Instant filtering across Standard Textbooks, Question Banks (PYQs), Handwritten Revision Notes, Practical Manuals, and High-Yield Atlases.
+- **16:6 Interactive Carousel:** Catch real-time book drops, high-yield exam alerts, and subject spotlights directly from the top of your shelf.
+
+### 📖 Tailored PDF Reader
+- **Dual-Page Spread:** Side-by-side reading on tablets, foldables, and wide viewports.
+- **Eye Relax Mode:** Warmth adjustment, dimmer controls, and Sepia/OLED Dark filters.
+- **High-Yield Snip & Circle-to-Search:** Crop histology diagrams and clinical flowcharts instantly for quick revision.
+- **Instant Full-Text Search:** Fast text scrubbing across heavy 800+ page medical books.
+
+### 🗓️ Study Desk & Session Tracker
+- **Session Goals:** Set page targets, track daily reading streaks, and manage study cards.
+- **Snooze & Reschedule:** Real-world schedule recovery for when hospital postings run late.
+
+### 📤 Crowdsourced Community Pipeline
+- **Direct App Uploads:** Students can submit missing textbooks, notes, and university PYQs directly to the Mulberry Vault.
+- **Quarantine Security:** Submissions are queued in an edge quarantine pipeline for review before publishing to the main library catalog.
+
+### ✈️ Upcoming: Mulberry Air (v5.0)
+- Read your phone's entire library on your laptop browser over local Wi-Fi/Hotspot without internet access or cloud fees.
 
 ---
 
-### 📅 Integrated Study & Exam Agenda
-- **Daily Checklist**: Track textbook chapter readings, lecture viewings, and problem sets.
-- **Exam Countdown**: Dynamic real-time countdown badges for upcoming exams and milestones.
-- **Coursework Deep Linking**: Jump directly from an agenda task into the exact page of your textbook.
+## 🏛️ System Architecture
 
----
-
-### 🎨 6 Curated Eye-Friendly Palettes
-
-| Palette | Background | Primary Tone | Ergonomics |
-|:---|:---|:---|:---|
-| **Olded (Sepia)** | `#FBF0D9` (Warm Parchment) | `#C26D38` (Amber Rust) | Mimics vintage book paper, reduces blue-light fatigue |
-| **Paper (Clean White)** | `#FFFFFF` (Crisp White) | `#2563EB` (Cobalt Blue) | High contrast, bright clinical aesthetic |
-| **Midnight (Pitch OLED)** | `#000000` (Pure Black) | `#38BDF8` (Sky Cyan) | Maximum battery savings on AMOLED screens |
-| **Forest (Sage Dark)** | `#111A15` (Deep Pine) | `#4ADE80` (Emerald Sage) | Calming dark palette for late-night reading |
-| **Espresso (Mocha Dark)** | `#1A1412` (Dark Roast) | `#F59E0B` (Warm Ochre) | Earthy dark mode with warm amber accents |
-| **Dusk (Lavender/Indigo)** | `#13111C` (Deep Twilight) | `#A78BFA` (Soft Purple) | Stylish indigo-slate palette with soft lavender |
-
----
-
-## 🖐️ Reader Gestures & Controls Cheat Sheet
-
-| Gesture / Control | Location | Action |
-|:---|:---|:---|
-| **Single Tap** | Left 20% of page | Previous Page turn |
-| **Single Tap** | Center 60% of page | Toggle Top Bar & Scrubber Bar (Spring Animation) |
-| **Single Tap** | Right 20% of page | Next Page turn |
-| **Double Tap** | Anywhere on page | Toggle 1.0x $\leftrightarrow$ 2.5x Zoom centered on tap |
-| **Pinch / Pan** | When zoomed in | Smooth 2-finger zoom (up to 5x) & fluid panning |
-| **Long Press** | Anywhere on PDF | **Circle to Search** (Omnient / ACTION_ASSIST screenshot) |
-| **Share Button** | Far right of Scrubber Bar | Export & share current page as high-def PNG image |
-| **Scrubber Slider** | Bottom bar center | Instant scrub to any page in document |
-
----
-
-## 🏗️ Technical Architecture
+Mulberry splits storage, edge routing, and catalog curation into a modular architecture:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                              UI LAYER                                  │
-│   LibraryScreen          AgendaScreen               SettingsScreen     │
-│   (Vaults/Covers)        (Tasks/Deadlines)          (Themes/Storage)   │
-│                                                                        │
-│                      ReaderActivity (Full Screen)                      │
-│   ┌────────────────────────────────────────────────────────────────┐   │
-│   │ SinglePagePdfViewer                                            │   │
-│   │   ├── HorizontalPager (Single-Page Viewport)                   │   │
-│   │   ├── AnimatedVisibility (Spring-Eased Scrubber Bar)           │   │
-│   │   │    └── [Prev] [Slider] [Next] [Badge] [Divider] [Share]    │   │
-│   │   └── CircleToSearchOverlay (Lens Ring Animation)              │   │
-│   ├────────────────────────────────────────────────────────────────┤   │
-│   │ ReaderTopBarScreen (Overlaid Top Bar with Spring Animation)    │   │
-│   └────────────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ StateFlows & UI Events
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                        VIEWMODEL & REPOSITORY                          │
-│   MulberryViewModel                                                    │
-│   ├── PdfRenderer & Mutex (Thread-Safe Page Rasterization)             │
-│   ├── CircleToSearchHelper (Omnient / ACTION_ASSIST Multi-Tier)        │
-│   ├── PdfThumbnailManager & PdfTextSearchManager                       │
-│   └── MulberryRepository                                               │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
-        Room Local Database                 Storage Vault (.mulberry/)
-        (Instant query cache)               (Atomic, portable JSON state)
+┌────────────────────────────────────────────────────────┐
+│                      Android App                       │
+│    Kotlin • Jetpack • Room DB • AES-256-GCM Engine     │
+└───────────────▲────────────────────────▲───────────────┘
+                │                        │
+       Catalog & Banners        Binary Payload Stream
+      (announcements.json)       (Encrypted .bin via S3)
+                │                        │
+┌───────────────┴──────────────┐ ┌───────┴───────────────┐
+│     GitHub Catalog Repo      │ │   Cloudflare Worker   │
+│  (Catalog, Metadata, Covers) │ │   (mulberry-vault)    │
+└──────────────────────────────┘ └───────▲───────────────┘
+                                         │
+                                 Batch LFS Pointer
+                                         │
+                                 ┌───────┴───────────────┐
+                                 │ Hugging Face Datasets │
+                                 │   (Storage Vault)     │
+                                 └───────────────────────┘
 ```
 
-### Tech Stack
-- **Language**: [Kotlin](https://kotlinlang.org/) (Coroutines, Flow, Mutex)
-- **UI Toolkit**: [Jetpack Compose](https://developer.android.com/jetpack/compose) with Material Design 3 (M3)
-- **PDF Rendering**: Native Android `PdfRenderer` + `PdfiumCore`
-- **Local Persistence**: [Room Database](https://developer.android.com/training/data-storage/room) (SQLite) + Portable JSON sync
-- **Image Handling**: Custom bitmap supersampling pipeline & in-memory LRU cache
-- **Edge-to-Edge**: `WindowCompat` with full gesture navigation and transient system bar immersion
+1. **Android Client (`Mulberry`):** Native Android app handling SQLite indexing, offline caching, AES-GCM streaming decryption, and reader rendering.
+2. **Edge Proxy (`Cloudflare Worker`):** Manages access quotas, VIP contributor routing, and bridges Git LFS batch upload requests to the vault.
+3. **Storage Vault (`Hugging Face Datasets`):** Stores encrypted `.bin` payloads via Git LFS pointers to eliminate costly file hosting bills.
+4. **Operations Portal (`portal.py`):** An administrative CMS built with FastAPI for batch URL/Drive ingestion, Hugging Face quarantine inspection, and one-click GitHub catalog syncing.
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Repository & CMS Setup
+
+The administrative dashboard lives in `portal.py` and manages ingestion, reviews, and catalog publishing:
 
 ### Prerequisites
-- Android Studio Ladybug / Meerkat (or newer)
-- JDK 17 or higher
-- Android SDK 35 (compile SDK)
-- A physical Android device or emulator running Android 8.0 (API 26) or higher
+- Python 3.10+
+- Hugging Face Access Token (`HF_TOKEN` with write permission)
+- GitHub Personal Access Token (`GH_TOKEN`)
 
-### Building from Source
-
+### Quickstart
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/mulberry.git
+git clone https://github.com/doubtsolved/mulberry-catalog.git
+cd mulberry-catalog
 
-# Navigate to project directory
-cd mulberry
+# Install dependencies
+pip install fastapi uvicorn requests pymupdf gdown beautifulsoup4 pillow python-dotenv cryptography huggingface_hub
 
-# Build the debug APK
-gradle :app:assembleDebug
+# Configure environment
+cat <<EOF > .env
+VAULT_ENCRYPTION_KEY=your_aes_hex_key
+HF_TOKEN=your_huggingface_token
+HF_REPO_ID=sahabul1064/mulberry-archives
+GH_TOKEN=your_github_token
+CATALOG_REPO=doubtsolved/mulberry-catalog
+CF_WORKER_URL=https://mulberry-vault.sahabulmondal2023.workers.dev
+EOF
+
+# Launch the Admin Portal
+python portal.py
 ```
+Open **`http://localhost:8000`** to access the Ingestion Engine, Community Submissions Quarantine, Catalog CMS, and 16:6 Banner Manager.
 
-The compiled APK will be located at:
+---
+
+## 📁 Repository Structure
+
 ```
-app/build/outputs/apk/debug/app-debug.apk
+.
+├── assets/
+│   ├── covers/            # Production WebP book cover thumbnails
+│   └── banners/           # 16:6 carousel announcement banners
+├── templates/
+│   └── index.html         # Administrative portal UI (Poppins & Inter)
+├── announcements.json     # Remote configuration for 16:6 shelf carousel
+├── catalog.json           # Master library catalog, categories, and mirror maps
+├── portal.py              # FastAPI administration CMS and batch ingestion pipeline
+└── README.md
 ```
 
 ---
 
-## 🔒 Permissions & Privacy
+## 🤝 Contributing
 
-Mulberry is **100% offline and local**:
-- `MANAGE_EXTERNAL_STORAGE` / `READ_EXTERNAL_STORAGE`: Required to access, index, and render PDF documents from real user storage folders.
-- `INTERNET`: Optional for feedback email or in-app external resource linking.
-- **Zero analytics, zero tracking, zero cloud dependencies.** Your books and notes never leave your device.
+Contributions to Mulberry are welcome:
+1. **Academic Content:** Submit high-yield notes or missing syllabus books directly through the in-app contribution sheet or via the admin portal.
+2. **Code & Issues:** Fork the repo, report bugs, or submit pull requests for features.
 
 ---
 
-## 📄 License
+## 📜 Disclaimer & Fair Use
 
-```text
-Copyright 2026 Mulberry Project Contributors
+Mulberry is an open-source educational project developed for academic reference, revision, and study purposes among medical students. All materials are community-curated and meant for personal study.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+---
 
-    http://www.apache.org/licenses/LICENSE-2.0
+## 👨‍💻 Developer Note
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+Built with chai, late-night grit, and terminal sessions by **Sahabul Mondal** — Medical Student & Accidental App Builder.  
+Special thanks to Google AI Studio, the Android developer community, and every student sharing resources instead of gatekeeping before exams! 🩺☕

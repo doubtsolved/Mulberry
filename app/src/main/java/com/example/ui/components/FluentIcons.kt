@@ -2889,7 +2889,46 @@ object FluentIcons {
             horizontalLineTo(13f)
         }
     }.build()
+
+    // DrinkCoffee24Regular (Coffee Cup for "Buy me a coffee")
+    val DrinkCoffee24Regular: ImageVector = ImageVector.Builder(
+        name = "DrinkCoffee24Regular",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.75f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Cup body
+            moveTo(4f, 8f)
+            horizontalLineTo(16f)
+            verticalLineTo(14f)
+            curveTo(16f, 17.31f, 13.31f, 20f, 10f, 20f)
+            curveTo(6.69f, 20f, 4f, 17.31f, 4f, 14f)
+            verticalLineTo(8f)
+            close()
+            // Cup handle
+            moveTo(16f, 9.5f)
+            horizontalLineTo(17.75f)
+            curveTo(19.55f, 9.5f, 21f, 10.95f, 21f, 12.75f)
+            curveTo(21f, 14.55f, 19.55f, 16f, 17.75f, 16f)
+            horizontalLineTo(15.6f)
+            // Steam lines
+            moveTo(7.5f, 3.5f)
+            verticalLineTo(5.5f)
+            moveTo(10f, 3f)
+            verticalLineTo(5.5f)
+            moveTo(12.5f, 3.5f)
+            verticalLineTo(5.5f)
+        }
+    }.build()
 }
+
 
 
 

@@ -1,111 +1,114 @@
-# Refractive Glass Dock, Olded Sepia Default, Dr. Sharma Profile & Clean Gated Validation Plan
+# Redesign "Contribute to Mulberry" Modal Sheet
 
-This revised plan establishes seamless input validation where **the Continue or Save button remains inactive until all mandatory inputs (Display Name & Gender) are completed**, without explicitly writing "REQUIRED" in the section labels, alongside Aptabase gender logging, optical refraction on the floating dock, translucent blurred active pill indicator, **Olded (Sepia)** default theme, and **Dr. Sharma** name suggestions.
+Update the **Contribute to Mulberry** bottom sheet modal to match the new grouped layout, copy, and action routing across all entry points in the app (Settings and Announcement Carousel `OPEN_CONTRIBUTE` actions), using Microsoft Fluent vector icons exclusively.
 
-### User Review & Critical Decisions
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> - **Clean Section Labels (No "REQUIRED" Tag)**:
->   - In Step 2 of `SetupWizardScreen.kt` and `UserProfileBottomSheet.kt`, field headers are styled cleanly: **"DISPLAY NAME"**, **"MBBS PROFESSIONAL YEAR"**, **"GENDER"**, and **"INSTITUTION · OPTIONAL"**. The word "REQUIRED" will **not** be displayed.
-> - **Inactive Button Validation Gating**:
->   - In the Setup Wizard, the "Continue" CTA button stays inactive (`enabled = false`) until the user fills in both Display Name (`displayName.trim().isNotEmpty()`) and Gender (`gender.trim().isNotEmpty()`). It activates dynamically with the primary glass glow as soon as the inputs are satisfied.
->   - In the Profile Settings bottom sheet, the "Save Profile" button similarly remains inactive until valid entries are provided.
-> - **Aptabase Telemetry for Gender**:
->   - `MulberryAnalytics.logProfileRegistered(name, college, prof, gender)` and `MulberryAnalytics.setUserContext(name, college, prof, gender)` report student gender directly into Aptabase event properties for `"user_onboarded"` and subsequent lifecycle events.
-> - **Dock Optical Refraction & Translucent Pill**:
->   - Add an optical prism refraction border brush and caustic highlight sheen to `ElasticGlassBottomBar`.
->   - Transform the active indicator pill to a translucent frosted glass lens (`colors.surfaceCard.copy(alpha = 0.55f)` with specular vertical gloss gradient and `1.dp` primary glow outline), allowing underlying dock and screen content to show through.
-> - **Default Theme Shift to Olded (Sepia)**:
->   - Set default theme across `SettingsViewModel`, `MulberryViewModel`, `EphemeralMulberryViewModel`, `ReaderActivity`, and `Theme.kt` from `ThemeMode.PAPER` to `ThemeMode.OLDED`.
-> - **Name Suggestion Update to "Dr. Sharma"**:
->   - Update text input placeholder/suggestion and fallback strings in `SetupWizardScreen.kt`, `UserProfileBottomSheet.kt`, `UserProfile.kt`, `UserProfileRepository.kt`, `StudyDashboardScreen.kt`, and `StudyShareHelper.kt` from "Sahabul" to "Dr. Sharma".
+> **Cross-App Synchronization & Fluent Iconography**:
+> - **No Emojis**: All leading icons use Microsoft Fluent 24dp vector icons (`DrinkCoffee24Regular`, `ArrowUpload24Regular` / `DocumentAdd24Regular`, `Code24Regular`, `Send24Regular`, and `Share24Regular`).
+> - **Unified Modal Across App**: Both the Settings screen ("Contribute to Mulberry" row) and the Library Shelf (`OPEN_CONTRIBUTE` banner action) will render this single shared modal component so behavior and UI stay strictly synchronized.
+> - **External PDF Reader Workflow**: Selecting a PDF via **Contribute resources** opens the chosen file directly inside `ReaderActivity` as an external PDF (`Intent.ACTION_VIEW` with read URI permission), triggering the built-in reader preview and "Add to Desk / Contribute to Community" workflow.
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
-- **What It Delivers**:
-  1. **Subtle & Enforced Validation**: Editorial typography without disruptive "REQUIRED" badges; validation is communicated cleanly by keeping the Continue / Save CTA inactive until Name and Gender are entered.
-  2. **Gender Attribute & Telemetry**: Full persistence in `UserProfileRepository` and automated reporting to Aptabase.
-  3. **Refractive Floating Dock**: Multi-stop chromatic refraction border with curved caustic reflection, coupled with a translucent blurred lens pill that blends into the active theme.
-  4. **Olded (Sepia) Default Theme**: Immediate warm, paper-toned eye comfort for all new and unconfigured users.
-  5. **Medical Academic Identity**: Standardized "Dr. Sharma" suggestions across input text fields.
+- **What It Does**: Replaces the legacy 3-section Contribute sheet with a streamlined, scrollable bottom sheet featuring a standalone support card (**Buy me a coffee**) and two grouped cards (**CONTRIBUTE** and **STAY CONNECTED**).
+- **Target Audience**: Medical students using Mulberry who want to support development via UPI, contribute textbooks/notes/PYQs through the built-in PDF reader, report issues on GitHub, join the Telegram support channel, or share the app with classmates.
+- **Key Value**: Makes contributing PDFs seamless by previewing them immediately in Mulberry's native PDF reader as an external PDF, while providing direct one-tap intents for UPI, GitHub, Telegram, and sharing.
 
 ---
 
-### 2. User Experience & Visual Design
+## 2. User Experience & Visual Design
 
-- **Profile Setup Wizard (Step 2)**:
-  - Header 1: **DISPLAY NAME** (placeholder: `"Dr. Sharma"`, single-line text field)
-  - Header 2: **MBBS PROFESSIONAL YEAR** (modal selector card)
-  - Header 3: **GENDER** (single-line text field with placeholder `"e.g., Male, Female, Non-binary"`, leading icon `FluentIcons.Person24Regular`)
-  - Header 4: **INSTITUTION · OPTIONAL** (placeholder: `"College or institution name"`)
-  - **Dynamic CTA State**:
-    - When either Name or Gender is empty: "Continue" CTA renders in inactive state (`FluidGlassPrimaryButton(enabled = false)` with muted colors and inactive click).
-    - When both are provided: "Continue" CTA animates to active primary glass glow with spring bounce and haptic confirmation.
-- **Refractive Floating Dock**:
-  - Prism refraction border brush with subtle edge chromatic dispersion (`colors.primary.copy(0.30f)`, white rim highlight, subtle cyan/amber edge dispersion).
-  - Translucent active indicator pill (`alpha = 0.55f`) with primary border outline and specular highlight.
-
----
-
-### 3. Technical Architecture & Component Hierarchy
-
+### Layout & Visual Hierarchy
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Mulberry UI & Telemetry                         │
-├────────────────────────────────────────────────────────────────────────┤
-│                                                                        │
-│   ┌───────────────────────────────┐  ┌─────────────────────────────┐   │
-│   │       BottomNavBar.kt         │  │     MulberryAnalytics.kt    │   │
-│   │ - Refractive Prism Brush      │  │ - setUserContext(...,gender)│   │
-│   │ - Caustic Top Rim Sheen       │  │ - logProfileRegistered(...) │   │
-│   │ - Translucent Lens Pill       │  │ - Aptabase "gender" prop    │   │
-│   │   (alpha = 0.55f + blur glow) │  └──────────────▲──────────────┘   │
-│   └───────────────────────────────┘                 │                  │
-│                                                     │                  │
-│   ┌─────────────────────────────────────────────────┴──────────────┐   │
-│   │             UserProfile & Persistence                          │   │
-│   │ - UserProfile(..., gender: String = "")                        │   │
-│   │ - UserProfileRepository (KEY_GENDER = "user_gender")           │   │
-│   │ - Default ThemeMode.OLDED across ViewModels & ReaderActivity   │   │
-│   └────────────────────────────────────────────────────────────────┘   │
-│                                                     │                  │
-│                                                     ▼                  │
-│   ┌────────────────────────────────────────────────────────────────┐   │
-│   │             Setup Wizard Step 2 (Clean Gated CTA)              │   │
-│   │ - DISPLAY NAME (placeholder: "Dr. Sharma")                     │   │
-│   │ - MBBS PROFESSIONAL YEAR                                       │   │
-│   │ - GENDER (placeholder: "e.g., Male, Female, Non-binary")       │   │
-│   │ - Continue CTA: enabled = (name.isNotBlank() && gender.isNot)  │   │
-│   └────────────────────────────────────────────────────────────────┘   │
-│                                                                        │
-└────────────────────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────┤
+│                    ━━━                       │
+│                                              │
+│  Help Mulberry grow                          │
+│  Keep the library free, open, and growing.   │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  [Coffee Icon]  Buy me a coffee     ›  │  │
+│  │                 Fuel late-night fixes  │  │
+│  │                 and new resources.     │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  C O N T R I B U T E                        │
+│  ┌────────────────────────────────────────┐  │
+│  │  [Upload Icon]  Contribute resources › │  │
+│  │                 Share books, notes &   │  │
+│  │                 PYQs                   │  │
+│  │  ────────────────────────────────────  │  │
+│  │  [Code Icon]    GitHub repository   ›  │  │
+│  │                 Report issues or help  │  │
+│  │                 build Mulberry         │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  S T A Y   C O N N E C T E D                │
+│  ┌────────────────────────────────────────┐  │
+│  │  [Send Icon]    Telegram channel    ›  │  │
+│  │                 Stay Updated           │  │
+│  │  ────────────────────────────────────  │  │
+│  │  [Share Icon]   Share Mulberry      ›  │  │
+│  │                 Share the latest       │  │
+│  │                 release with classmates│  │
+│  └────────────────────────────────────────┘  │
+└──────────────────────────────────────────────┘
 ```
 
-#### File Implementation Plan
-1. **`UserProfile.kt` & `UserProfileRepository.kt`**:
-   - Add `gender: String = ""` to `UserProfile`.
-   - Update `UserProfileRepository` to store and retrieve `KEY_GENDER = "user_gender"`.
-   - Change default fallback name from `"Sahabul"` to `"Dr. Sharma"`.
-2. **`MulberryAnalytics.kt`**:
-   - Add `cachedGender: String = "Not Specified"`.
-   - Update `setUserContext` and `logProfileRegistered` to track `gender` to Aptabase.
-3. **`SetupWizardScreen.kt`**:
-   - Add `gender` state and `onGenderChange` to `ProfileSetupScreen`.
-   - Add `"GENDER"` input field (clean label without "REQUIRED").
-   - Compute `val canContinue = displayName.trim().isNotBlank() && gender.trim().isNotBlank()`.
-   - Wire `FluidGlassPrimaryButton("Continue", enabled = canContinue)`.
-   - In `PermissionsScreen.onLaunchApp`, pass `gender` to `MulberryAnalytics.logProfileRegistered`.
-   - Change name placeholder to `"Dr. Sharma"`.
-4. **`UserProfileBottomSheet.kt` & `SettingsScreen.kt`**:
-   - Add `"GENDER"` field in profile editor with clean label.
-   - Gate Save button to require non-blank name and gender.
-   - Update placeholder from `"e.g., Sahabul"` to `"e.g., Dr. Sharma"`.
-5. **`BottomNavBar.kt`**:
-   - Add refractive prism brush and caustic sheen to `ElasticGlassBottomBar`.
-   - Render active indicator pill with translucent glass (`colors.surfaceCard.copy(alpha = 0.55f)`), specular vertical gradient, and primary glow border.
-6. **`Theme.kt`, `SettingsViewModel.kt`, `MulberryViewModel.kt`, `EphemeralMulberryViewModel.kt`, `ReaderActivity.kt`**:
-   - Change default theme fallback to `ThemeMode.OLDED`.
-7. **Verification**:
-   - Run `compile_applet` to confirm clean compilation.
+- **Header**:
+  - Title: `Help Mulberry grow` (`PoppinsFamily`, `FontWeight.Bold`, `20.sp`, `colors.textPrimary`)
+  - Subtitle: `Keep the library free, open, and growing.` (`InterFamily`, `13.sp`, `colors.textSecondary`)
+- **Section Headers**:
+  - `CONTRIBUTE` and `STAY CONNECTED` styled with wide letter spacing (`letterSpacing = 2.5.sp`, `InterFamily`, `FontWeight.SemiBold`, `11.5.sp`, `colors.primary`).
+- **Cards & Dividers**:
+  - `RoundedCornerShape(16.dp)` cards with `colors.surfaceCard` background and `1.dp` `colors.borderSubtle` border.
+  - Multi-item cards (`CONTRIBUTE` and `STAY CONNECTED`) separate rows with a subtle `0.5.dp` horizontal divider (`colors.borderSubtle.copy(alpha = 0.6f)`).
+  - Each row features a `40.dp` circular icon container (`colors.primary.copy(alpha = 0.12f)`), a Microsoft Fluent 24dp vector icon tinted with `colors.primary`, title + subtitle text column, and a trailing `FluentIcons.ChevronRight16Regular`.
+
+---
+
+## 3. Key Product Decisions & Action Routing
+
+1. **Buy me a coffee (`7029279707@upi`)**:
+   - Launches an Android `Intent(Intent.ACTION_VIEW, Uri.parse("upi://pay?pa=7029279707@upi&pn=Mulberry&cu=INR"))`.
+   - If no UPI payment app is installed on the device, copies `7029279707@upi` to the clipboard and shows a toast (`"UPI ID (7029279707@upi) copied to clipboard"`).
+2. **Contribute resources (External PDF in Built-in Reader)**:
+   - Launches the system file manager PDF selector (`ActivityResultContracts.OpenDocument` for `arrayOf("application/pdf")`).
+   - Upon selecting a PDF `Uri`, grants read permission and launches `ReaderActivity` with `Intent.ACTION_VIEW` and `data = uri`.
+   - `ReaderActivity.handleExternalPdfUri(uri)` automatically loads the PDF as an external document with the top banner/menu to add to Desk and contribute to the Mulberry Community Library.
+3. **GitHub repository**:
+   - Opens `https://github.com/doubtsolved/Mulberry` via `Intent.ACTION_VIEW`.
+4. **Telegram channel (`t.me/mulberrysupport`)**:
+   - Attempts to open `tg://resolve?domain=mulberrysupport` (or `https://t.me/mulberrysupport` targeted at installed Telegram clients `org.telegram.messenger` / `org.thunderdog.challegram`), and falls back seamlessly to opening `https://t.me/mulberrysupport` in the browser.
+5. **Share Mulberry**:
+   - Launches the Android system share sheet (`Intent.ACTION_SEND`) with the latest release link (`https://github.com/doubtsolved/Mulberry/releases/latest`).
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                ContributeSheetContent (Shared)              │
+│   Used by SettingsScreen & LibraryScreen (OPEN_CONTRIBUTE)  │
+└───────────────┬─────────────────────────────┬───────────────┘
+                │                             │
+     ┌──────────▼──────────┐       ┌──────────▼──────────┐
+     │  PDF Document Picker │       │   External Intents  │
+     │  (application/pdf)   │       │  • UPI: 7029279707  │
+     └──────────┬──────────┘       │  • GitHub Repo      │
+                │                  │  • Telegram Support │
+     ┌──────────▼──────────┐       │  • Share Release    │
+     │   ReaderActivity    │       └─────────────────────┘
+     │ (ACTION_VIEW + Uri) │
+     │ Opens as External   │
+     │ PDF with Contribute │
+     └─────────────────────┘
+```
+
+- **Icon Addition**: Add `DrinkCoffee24Regular` to `FluentIcons` using clean vector strokes matching the existing 24dp Fluent icon set.
+- **Shared Composable**: Expose `ContributeSheetContent(onDismiss: () -> Unit, onContributeResourcesClick: () -> Unit)` so both `SettingsScreen` and `LibraryScreen` invoke the exact same UI and PDF picker -> `ReaderActivity` external PDF launch pipeline.

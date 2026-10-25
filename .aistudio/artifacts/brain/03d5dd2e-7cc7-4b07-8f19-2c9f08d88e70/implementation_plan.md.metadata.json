@@ -1,6 +1,6 @@
 {
-  "summary":  "Revised implementation plan: clean labels without the 'REQUIRED' text, gating Continue/Save buttons inactive until all inputs are filled, logging gender to Aptabase, optical dock refraction, translucent pill, Olded theme default, and Dr. Sharma updates.",
-  "updatedAt":  "2026-10-24T15:29:49.088616610Z",
+  "summary":  "Implementation plan for redesigning the \"Contribute to Mulberry\" modal sheet with the new layout, Microsoft Fluent icons, UPI support card, external PDF reader launch for resource contributions, GitHub link, Telegram channel deep-link with browser fallback, and release sharing across Settings and Library screens.",
+  "updatedAt":  "2026-10-25T10:01:33.563202694Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

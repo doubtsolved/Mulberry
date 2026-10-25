@@ -103,6 +103,7 @@ import com.example.viewmodel.MulberryViewModel
 import com.example.viewmodel.SettingsViewModel
 import com.example.BuildConfig
 import com.example.ui.components.UpdateBottomSheet
+import com.example.ui.reader.ReaderActivity
 import com.example.util.DownloadState
 import com.example.util.ReleaseInfo
 import com.example.util.UpdateCheckResult
@@ -1784,11 +1785,35 @@ private fun AboutSheetContent(
 
 // 8. Contribute Sheet
 @Composable
-private fun ContributeSheetContent(
+fun ContributeSheetContent(
     onDismiss: () -> Unit
 ) {
     val colors = LocalMulberryColors.current
     val context = LocalContext.current
+
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            onDismiss()
+            try {
+                val readerIntent = Intent(context, ReaderActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    setDataAndType(uri, "application/pdf")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(readerIntent)
+            } catch (_: Exception) {
+                Toast.makeText(context, "Could not open PDF in reader", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1798,192 +1823,60 @@ private fun ContributeSheetContent(
             .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header
+        // Header: Help Mulberry grow
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                text = "Contribute to Mulberry",
+                text = "Help Mulberry grow",
                 fontFamily = PoppinsFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 color = colors.textPrimary
             )
             Text(
-                text = "Help keep this platform free, open, and growing.",
+                text = "Keep the library free, open, and growing.",
                 fontFamily = InterFamily,
                 fontSize = 13.sp,
                 color = colors.textSecondary
             )
         }
 
-        // Section 1: ACADEMIC CONTENT
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = "ACADEMIC CONTENT",
-                fontFamily = InterFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.5.sp,
-                color = colors.primary,
-                letterSpacing = 0.8.sp
-            )
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = colors.surfaceCard,
-                border = BorderStroke(1.dp, colors.borderSubtle),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable {
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://forms.gle/FGAupTdNXCWkGu7g9"))
-                            context.startActivity(intent)
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
-                        }
+        // Top Standalone Card: Buy me a coffee -> redirects to pay 7029279707@upi
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = colors.surfaceCard,
+            border = BorderStroke(1.dp, colors.borderSubtle),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable {
+                    val upiUri = Uri.parse("upi://pay?pa=7029279707%40upi&cu=INR&tn=Thanks+a+lot+for+donating+to+Mulberry+Creator")
+                    val upiIntent = Intent(Intent.ACTION_VIEW, upiUri)
+                    try {
+                        context.startActivity(upiIntent)
+                    } catch (_: Exception) {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Mulberry UPI ID", "7029279707@upi"))
+                        Toast.makeText(context, "UPI ID (7029279707@upi) copied to clipboard", Toast.LENGTH_SHORT).show()
                     }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.primary.copy(alpha = 0.12f),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = FluentIcons.ArrowUpload24Regular,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Submit Books & Notes",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.5.sp,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Upload textbooks, notes, or PYQs to the vault via Google Drive. Direct Google Form.",
-                            fontFamily = InterFamily,
-                            fontSize = 12.sp,
-                            color = colors.textSecondary,
-                            lineHeight = 16.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Icon(
-                        imageVector = FluentIcons.ChevronRight16Regular,
-                        contentDescription = "Open Google Form",
-                        tint = colors.textMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
                 }
-            }
+                .testTag("contribute_buy_coffee_card")
+        ) {
+            ContributeActionRow(
+                icon = FluentIcons.DrinkCoffee24Regular,
+                title = "Buy me a coffee",
+                subtitle = "Fuel late-night fixes and new resources."
+            )
         }
 
-        // Section 2: CODE & DEVELOPMENT
+        // Section 1: C O N T R I B U T E
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = "CODE & DEVELOPMENT",
+                text = "CONTRIBUTE",
                 fontFamily = InterFamily,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.5.sp,
                 color = colors.primary,
-                letterSpacing = 0.8.sp
-            )
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = colors.surfaceCard,
-                border = BorderStroke(1.dp, colors.borderSubtle),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable {
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/doubtsolved/Mulberry"))
-                            context.startActivity(intent)
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = colors.primary.copy(alpha = 0.12f),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = FluentIcons.Code24Regular,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "GitHub Repository",
-                            fontFamily = PoppinsFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.5.sp,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Report bugs, request app features, or star the project on GitHub.",
-                            fontFamily = InterFamily,
-                            fontSize = 12.sp,
-                            color = colors.textSecondary,
-                            lineHeight = 16.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Icon(
-                        imageVector = FluentIcons.ChevronRight16Regular,
-                        contentDescription = "Open GitHub",
-                        tint = colors.textMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
-
-        // Section 3: COMMUNITY & SPREAD
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = "COMMUNITY & SPREAD",
-                fontFamily = InterFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.5.sp,
-                color = colors.primary,
-                letterSpacing = 0.8.sp
+                letterSpacing = 2.4.sp
             )
 
             Surface(
@@ -1993,132 +1886,126 @@ private fun ContributeSheetContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
-                    // Item 1: Telegram Channel & Delivery Bot
-                    Row(
+                    // Item 1: Contribute resources -> opens file manager PDF picker -> opens in built-in PDF reader as external PDF
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                            }
+                            .testTag("contribute_resources_row")
+                    ) {
+                        ContributeActionRow(
+                            icon = FluentIcons.DocumentAdd24Regular,
+                            title = "Contribute resources",
+                            subtitle = "Share books, notes & PYQs"
+                        )
+                    }
+
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = colors.borderSubtle.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // Item 2: GitHub repository -> redirects to git repo link
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
                                 try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/MulberryIngestionBot"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/doubtsolved/Mulberry"))
                                     context.startActivity(intent)
                                 } catch (_: Exception) {
-                                    Toast.makeText(context, "Could not open Telegram", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .testTag("contribute_github_row")
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = colors.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = FluentIcons.Send24Regular,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Telegram Channel & Delivery Bot",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.5.sp,
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Join for instant book drop alerts.",
-                                fontFamily = InterFamily,
-                                fontSize = 12.sp,
-                                color = colors.textSecondary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Icon(
-                            imageVector = FluentIcons.ChevronRight16Regular,
-                            contentDescription = "Open Telegram",
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(16.dp)
+                        ContributeActionRow(
+                            icon = FluentIcons.Code24Regular,
+                            title = "GitHub repository",
+                            subtitle = "Report issues or help build Mulberry"
                         )
                     }
+                }
+            }
+        }
 
-                    HorizontalDivider(thickness = 0.5.dp, color = colors.borderSubtle.copy(alpha = 0.6f))
+        // Section 2: S T A Y   C O N N E C T E D
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "STAY CONNECTED",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = colors.primary,
+                letterSpacing = 2.4.sp
+            )
 
-                    // Item 2: Share Mulberry with Batchmates
-                    Row(
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceCard,
+                border = BorderStroke(1.dp, colors.borderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    // Item 1: Telegram channel -> t.me/mulberrysupport opens in Telegram, fallback to browser
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                val releaseUrl = "https://github.com/doubtsolved/Mulberry/releases"
-                                val shareText = "Check out Mulberry — free, zero-cost, high-speed study engine for MBBS students:\n$releaseUrl"
+                                try {
+                                    val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=mulberrysupport"))
+                                    context.startActivity(tgIntent)
+                                } catch (_: Exception) {
+                                    try {
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/mulberrysupport"))
+                                        context.startActivity(webIntent)
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Could not open Telegram", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            .testTag("contribute_telegram_row")
+                    ) {
+                        ContributeActionRow(
+                            icon = FluentIcons.Send24Regular,
+                            title = "Telegram channel",
+                            subtitle = "Stay Updated"
+                        )
+                    }
 
-                                // Copy to clipboard
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = colors.borderSubtle.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // Item 2: Share Mulberry -> share latest release link
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val releaseUrl = "https://github.com/doubtsolved/Mulberry/releases/latest"
+                                val shareText = "Check out Mulberry — free, open study workspace & medical library for MBBS students:\n$releaseUrl"
+
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Mulberry App Link", releaseUrl))
-                                Toast.makeText(context, "Download link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Mulberry Latest Release", releaseUrl))
 
-                                // Open share sheet
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_SUBJECT, "Mulberry - Free Medical Study Workspace")
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Share Mulberry with Batchmates"))
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Mulberry"))
                             }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .testTag("contribute_share_row")
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = colors.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = FluentIcons.Share24Regular,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Share Mulberry with Batchmates",
-                                fontFamily = PoppinsFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.5.sp,
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Copy app download link to share with peers.",
-                                fontFamily = InterFamily,
-                                fontSize = 12.sp,
-                                color = colors.textSecondary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Icon(
-                            imageVector = FluentIcons.ChevronRight16Regular,
-                            contentDescription = "Share",
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(16.dp)
+                        ContributeActionRow(
+                            icon = FluentIcons.Share24Regular,
+                            title = "Share Mulberry",
+                            subtitle = "Share the latest release with classmates"
                         )
                     }
                 }
@@ -2126,6 +2013,65 @@ private fun ContributeSheetContent(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun ContributeActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String
+) {
+    val colors = LocalMulberryColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = colors.primary.copy(alpha = 0.12f),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = colors.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontFamily = PoppinsFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.5.sp,
+                color = colors.textPrimary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontFamily = InterFamily,
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                lineHeight = 16.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Icon(
+            imageVector = FluentIcons.ChevronRight16Regular,
+            contentDescription = title,
+            tint = colors.textMuted,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
@@ -2250,7 +2196,7 @@ private fun DeveloperInfoSheetContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Hey, I’m Sahabul, a medical student and the creator of Mulberry. I built this space to make studying and reading simpler, calmer, and accessible to everyone. 🌿",
+                    text = "Hey, I’m Sahabul, a medical student and the creator of Mulberry. I built this space to make studying and reading simpler, calmer, and accessible to everyone.",
                     fontFamily = InterFamily,
                     fontSize = 13.sp,
                     color = colors.textPrimary,
@@ -2366,7 +2312,12 @@ private fun DeveloperInfoSheetContent(
                         verticalArrangement = Arrangement.spacedBy(5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "🐛", fontSize = 18.sp)
+                        Icon(
+                            imageVector = FluentIcons.Warning24Regular,
+                            contentDescription = "Report Bug",
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Text(
                             text = "Report Bug",
                             fontFamily = PoppinsFamily,
@@ -2407,7 +2358,12 @@ private fun DeveloperInfoSheetContent(
                         verticalArrangement = Arrangement.spacedBy(5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "✈️", fontSize = 18.sp)
+                        Icon(
+                            imageVector = FluentIcons.Send24Regular,
+                            contentDescription = "Telegram",
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Text(
                             text = "Telegram",
                             fontFamily = PoppinsFamily,
@@ -2448,7 +2404,12 @@ private fun DeveloperInfoSheetContent(
                         verticalArrangement = Arrangement.spacedBy(5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "☕", fontSize = 18.sp)
+                        Icon(
+                            imageVector = FluentIcons.DrinkCoffee24Regular,
+                            contentDescription = "Send Chai",
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Text(
                             text = "Send Chai",
                             fontFamily = PoppinsFamily,

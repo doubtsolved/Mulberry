@@ -24,6 +24,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -55,6 +56,7 @@ import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.PermissionGatewayScreen
 import com.example.ui.screens.desk.DeskRootScreen
+import com.example.ui.theme.LocalMulberryColors
 import com.example.ui.theme.MulberryTheme
 import com.example.util.PermissionUtils
 import com.example.viewmodel.MulberryViewModel
@@ -323,7 +325,13 @@ fun MulberryApp(viewModel: MulberryViewModel) {
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isWideScreen = configuration.screenWidthDp >= 600 || isLandscape
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val colors = LocalMulberryColors.current
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.backgroundGradient)
+    ) {
         if (isWideScreen && showBottomBar) {
             Row(modifier = Modifier.fillMaxSize()) {
                 MulberryNavigationRail(

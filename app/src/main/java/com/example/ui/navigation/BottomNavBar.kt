@@ -150,12 +150,13 @@ fun ElasticGlassBottomBar(
     selectedTab: DeskTab,
     onTabSelected: (DeskTab) -> Unit,
     modifier: Modifier = Modifier,
+    tabs: List<DeskTab> = DeskTab.entries,
     onTabLongClick: (DeskTab) -> Unit = {}
 ) {
     val colors = LocalMulberryColors.current
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
-    val tabs = remember { DeskTab.entries }
+    val activeTabs = remember(tabs) { if (tabs.isEmpty()) DeskTab.entries else tabs }
 
     // Tab measured positions: Map<DeskTab, Pair<OffsetXPx, WidthPx>>
     var tabBounds by remember { mutableStateOf(mapOf<DeskTab, Pair<Float, Float>>()) }
@@ -332,7 +333,7 @@ fun ElasticGlassBottomBar(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    tabs.forEach { tab ->
+                    activeTabs.forEach { tab ->
                         val isSelected = tab == selectedTab
                         val mulberryTab = tab.toMulberryTab()
 
@@ -435,10 +436,12 @@ fun MulberryBottomNavBar(
     tabs: List<MulberryTab> = MulberryTab.entries,
     onTabLongClick: (MulberryTab) -> Unit = {}
 ) {
+    val deskTabs = remember(tabs) { tabs.map { DeskTab.fromMulberryTab(it) } }
     ElasticGlassBottomBar(
         selectedTab = DeskTab.fromMulberryTab(selectedTab),
         onTabSelected = { deskTab -> onTabSelected(deskTab.toMulberryTab()) },
         modifier = modifier,
+        tabs = deskTabs,
         onTabLongClick = { deskTab -> onTabLongClick(deskTab.toMulberryTab()) }
     )
 }
